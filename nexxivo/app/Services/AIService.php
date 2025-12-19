@@ -69,7 +69,18 @@ class AIService
             throw new \Exception("Resposta inválida do Ollama");
         }
 
-        return trim($data['response']);
+        $responseText = trim($data['response']);
+        
+        // VALIDAÇÃO CRÍTICA: Não permitir respostas vazias
+        if (empty($responseText)) {
+            Log::warning('Resposta vazia recebida do Ollama', [
+                'model' => $model,
+                'prompt_preview' => substr($fullPrompt, 0, 100),
+            ]);
+            throw new \Exception("Resposta vazia recebida do Ollama");
+        }
+
+        return $responseText;
     }
 
     /**
@@ -127,7 +138,18 @@ class AIService
             throw new \Exception("Resposta inválida do Gemini");
         }
 
-        return trim($data['candidates'][0]['content']['parts'][0]['text']);
+        $responseText = trim($data['candidates'][0]['content']['parts'][0]['text']);
+        
+        // VALIDAÇÃO CRÍTICA: Não permitir respostas vazias
+        if (empty($responseText)) {
+            Log::warning('Resposta vazia recebida do Gemini', [
+                'model' => $model,
+                'prompt_preview' => substr($fullPrompt, 0, 100),
+            ]);
+            throw new \Exception("Resposta vazia recebida do Gemini");
+        }
+
+        return $responseText;
     }
 
     /**

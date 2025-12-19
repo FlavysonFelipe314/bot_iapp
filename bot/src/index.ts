@@ -430,14 +430,29 @@ class WhatsAppBot {
       const actions = flow.actions || [];
 
       for (const action of actions) {
-        if (action.type === 'send_message') {
-          await this.sendMessage(contact, action.content);
-        } else if (action.type === 'wait') {
-          await new Promise(resolve => setTimeout(resolve, action.duration || 1000));
-        } else if (action.type === 'ai_response') {
-          await this.sendAIResponse(contact, messageText, action);
-        } else if (action.type === 'conditional') {
-          await this.executeConditionalAction(contact, messageText, action);
+        try {
+          if (action.type === 'send_message') {
+            // Validar conteúdo antes de tentar enviar
+            if (!action.content || typeof action.content !== 'string' || action.content.trim().length === 0) {
+              console.warn('⚠️  Ação send_message ignorada: conteúdo vazio');
+              continue;
+            }
+            await this.sendMessage(contact, action.content);
+          } else if (action.type === 'wait') {
+            await new Promise(resolve => setTimeout(resolve, action.duration || 1000));
+          } else if (action.type === 'ai_response') {
+            await this.sendAIResponse(contact, messageText, action);
+          } else if (action.type === 'conditional') {
+            await this.executeConditionalAction(contact, messageText, action);
+          }
+        } catch (actionError: any) {
+          // Se for erro de mensagem vazia, apenas logar e continuar
+          if (actionError.message && actionError.message.includes('vazia')) {
+            console.warn(`⚠️  Ação ${action.type} ignorada: ${actionError.message}`);
+          } else {
+            // Para outros erros, propagar para o catch externo
+            throw actionError;
+          }
         }
       }
 
@@ -1208,6 +1223,12 @@ class WhatsAppBot {
       if (response.data.success && response.data.data?.response) {
         let aiResponse = response.data.data.response;
         
+        // VALIDAÇÃO CRÍTICA: Verificar se a resposta da IA não está vazia
+        if (!aiResponse || typeof aiResponse !== 'string' || aiResponse.trim().length === 0) {
+          console.warn('⚠️  Resposta da IA está vazia, não será enviada');
+          throw new Error('A resposta da IA está vazia');
+        }
+        
         console.log(`🤖 Resposta da IA recebida: "${aiResponse}"`);
         
         // Extrair triggers de imagem ANTES de processar o texto
@@ -1216,15 +1237,16 @@ class WhatsAppBot {
         // Remover triggers do texto para enviar o áudio/texto primeiro
         let cleanedResponse = this.removeImageTriggers(aiResponse);
         
-        // Se após remover os triggers o texto estiver vazio, ainda enviar as imagens depois
-        // Mas primeiro verificar se há texto para enviar
+        // VALIDAÇÃO: Após remover triggers, verificar se ainda há conteúdo
+        // Se não houver texto mas houver imagens, ainda podemos enviar as imagens
+        // Mas não devemos tentar enviar texto vazio
         
         // Dividir conteúdo em partes sensíveis e não sensíveis
         // Passar palavras-chave sensíveis configuráveis do fluxo
         // Garantir que sensitiveKeywords está definido
         const keywordsToUse = sensitiveKeywords || [];
         
-        // Se há texto para enviar (mesmo que vazio após limpeza, pode ter conteúdo antes)
+        // Se há texto para enviar (após remover triggers)
         if (cleanedResponse && cleanedResponse.trim().length > 0) {
           const parts = this.splitSensitiveContent(cleanedResponse, keywordsToUse);
           
@@ -1262,9 +1284,13 @@ class WhatsAppBot {
         if (imageTriggers.length > 0) {
           console.log(`🖼️  Enviando ${imageTriggers.length} imagem(ns) após o áudio/texto...`);
           await this.sendImagesFromTriggers(contact, imageTriggers);
+        } else if (!cleanedResponse || cleanedResponse.trim().length === 0) {
+          // Se não há texto E não há imagens, a resposta está realmente vazia
+          console.warn('⚠️  Resposta da IA está vazia (sem texto e sem imagens), não será enviada');
+          throw new Error('A resposta da IA está completamente vazia');
         }
       } else {
-        throw new Error('Erro ao gerar resposta com IA');
+        throw new Error('Erro ao gerar resposta com IA: resposta não encontrada');
       }
     } catch (error: any) {
       console.error('Erro ao gerar resposta com IA:', error.message);
@@ -1329,6 +1355,12 @@ class WhatsAppBot {
 
   async sendMessage(contact: string, message: string) {
     try {
+      // VALIDAÇÃO CRÍTICA: Não permitir mensagens vazias
+      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+        console.warn('⚠️  Tentativa de enviar mensagem vazia bloqueada');
+        throw new Error('Não é possível enviar mensagens vazias');
+      }
+      
       // Verificar se está pronto e se o cliente ainda existe
       if (!this.isReady) {
         throw new Error('WhatsApp não está conectado');
@@ -1639,12 +1671,27 @@ class WhatsAppBot {
   }
 
   private async executeAction(contact: string, messageText: string, action: any) {
-    if (action.type === 'send_message') {
-      await this.sendMessage(contact, action.content);
-    } else if (action.type === 'wait') {
-      await new Promise(resolve => setTimeout(resolve, action.duration || 1000));
-    } else if (action.type === 'ai_response') {
-      await this.sendAIResponse(contact, messageText, action);
+    try {
+      if (action.type === 'send_message') {
+        // Validar conteúdo antes de tentar enviar
+        if (!action.content || typeof action.content !== 'string' || action.content.trim().length === 0) {
+          console.warn('⚠️  Ação send_message ignorada: conteúdo vazio');
+          return;
+        }
+        await this.sendMessage(contact, action.content);
+      } else if (action.type === 'wait') {
+        await new Promise(resolve => setTimeout(resolve, action.duration || 1000));
+      } else if (action.type === 'ai_response') {
+        await this.sendAIResponse(contact, messageText, action);
+      }
+    } catch (actionError: any) {
+      // Se for erro de mensagem vazia, apenas logar
+      if (actionError.message && actionError.message.includes('vazia')) {
+        console.warn(`⚠️  Ação ${action.type} ignorada: ${actionError.message}`);
+      } else {
+        // Para outros erros, propagar
+        throw actionError;
+      }
     }
   }
 
@@ -1679,6 +1726,13 @@ class WhatsAppBot {
             if (!contact || !message) {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ success: false, error: 'contact e message são obrigatórios' }));
+              return;
+            }
+
+            // VALIDAÇÃO: Verificar se a mensagem não está vazia
+            if (typeof message !== 'string' || message.trim().length === 0) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, error: 'A mensagem não pode estar vazia' }));
               return;
             }
 
