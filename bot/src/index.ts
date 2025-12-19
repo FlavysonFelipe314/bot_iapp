@@ -855,6 +855,226 @@ class WhatsAppBot {
     return cleanedParts;
   }
 
+  /**
+   * Extrai triggers de imagem do texto (ex: {imagem_1}, {img001}, {img_1})
+   * Aceita qualquer formato dentro de chaves como trigger
+   * Retorna array com os nomes das imagens encontradas (sem as chaves)
+   */
+  private extractImageTriggers(text: string): string[] {
+    // Padrão flexível: qualquer texto dentro de chaves {texto}
+    // Aceitar qualquer conteúdo alfanumérico (incluindo números no início)
+    const imageTriggerRegex = /\{([^}]+)\}/g;
+    const matches = [...text.matchAll(imageTriggerRegex)];
+    
+    if (!matches || matches.length === 0) {
+      console.log('🔍 Nenhum trigger de imagem encontrado no texto');
+      return [];
+    }
+    
+    // Extrair os nomes dos triggers (sem as chaves)
+    // Filtrar apenas triggers que parecem ser nomes de arquivo (alfanumérico com underscore, hífen ou números)
+    const triggers = matches
+      .map(match => match[1].trim())
+      .filter(trigger => {
+        // Aceitar qualquer trigger que seja alfanumérico (incluindo números no início como img001)
+        const isValid = /^[a-z0-9_\-]+$/i.test(trigger);
+        if (!isValid) {
+          console.log(`⚠️  Trigger ignorado (não é alfanumérico): {${trigger}}`);
+        }
+        return isValid;
+      });
+    
+    console.log(`🔍 Triggers de imagem extraídos: ${triggers.join(', ')}`);
+    return triggers;
+  }
+
+  /**
+   * Remove triggers de imagem do texto
+   * Remove qualquer padrão {texto} que seja alfanumérico
+   */
+  private removeImageTriggers(text: string): string {
+    // Remover qualquer padrão {texto} alfanumérico (triggers de imagem)
+    // Usar o mesmo padrão da extração para garantir consistência
+    const cleaned = text.replace(/\{[a-z0-9_\-]+\}/gi, (match) => {
+      console.log(`🗑️  Removendo trigger: ${match}`);
+      return '';
+    }).trim();
+    console.log(`🧹 Texto após remover triggers: "${cleaned}"`);
+    return cleaned;
+  }
+
+  /**
+   * Busca uma imagem na pasta /assets com diferentes extensões
+   * Retorna o caminho completo do arquivo se encontrado, null caso contrário
+   */
+  private findImageInAssets(imageName: string): string | null {
+    const assetsPath = join(process.cwd(), 'assets');
+    const extensions = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+    
+    console.log(`🔍 Buscando imagem "${imageName}" em: ${assetsPath}`);
+    console.log(`📂 Diretório atual (process.cwd()): ${process.cwd()}`);
+    
+    // Verificar se a pasta assets existe
+    if (!fs.existsSync(assetsPath)) {
+      console.warn(`⚠️  Pasta /assets não encontrada em: ${assetsPath}`);
+      // Tentar caminho alternativo (relativo ao arquivo)
+      const altPath = join(__dirname, '..', 'assets');
+      if (fs.existsSync(altPath)) {
+        console.log(`✅ Pasta assets encontrada em caminho alternativo: ${altPath}`);
+        // Continuar com o caminho alternativo
+        return this.searchImageInPath(altPath, imageName, extensions);
+      }
+      return null;
+    }
+    
+    console.log(`✅ Pasta assets encontrada: ${assetsPath}`);
+    
+    // Listar arquivos na pasta para debug
+    try {
+      const files = fs.readdirSync(assetsPath);
+      console.log(`📁 Arquivos em assets: ${files.join(', ')}`);
+    } catch (err) {
+      console.warn(`⚠️  Erro ao listar arquivos: ${err}`);
+    }
+    
+    // Tentar cada extensão
+    return this.searchImageInPath(assetsPath, imageName, extensions);
+  }
+
+  /**
+   * Busca imagem em um caminho específico
+   */
+  private searchImageInPath(path: string, imageName: string, extensions: string[]): string | null {
+    for (const ext of extensions) {
+      const imagePath = join(path, `${imageName}.${ext}`);
+      console.log(`   Tentando: ${imagePath}`);
+      if (fs.existsSync(imagePath)) {
+        console.log(`✅ Imagem encontrada: ${imagePath}`);
+        return imagePath;
+      }
+    }
+    
+    console.warn(`⚠️  Imagem não encontrada: ${imageName} (tentou extensões: ${extensions.join(', ')})`);
+    return null;
+  }
+
+  /**
+   * Envia uma imagem via WhatsApp
+   */
+  private async sendImage(contact: string, imagePath: string): Promise<void> {
+    try {
+      // Verificar se está pronto e se o cliente ainda existe
+      if (!this.isReady) {
+        throw new Error('WhatsApp não está conectado');
+      }
+      
+      // Verificar se o cliente ainda está válido
+      if (!this.client || !this.client.info) {
+        throw new Error('Sessão do WhatsApp foi fechada');
+      }
+
+      // Ler arquivo de imagem
+      const imageBuffer = fs.readFileSync(imagePath);
+      const imageBase64 = imageBuffer.toString('base64');
+      
+      // Determinar mimetype baseado na extensão
+      const ext = imagePath.toLowerCase().split('.').pop();
+      let mimetype: string;
+      let filename: string;
+      
+      switch (ext) {
+        case 'png':
+          mimetype = 'image/png';
+          filename = 'image.png';
+          break;
+        case 'jpg':
+        case 'jpeg':
+          mimetype = 'image/jpeg';
+          filename = 'image.jpg';
+          break;
+        case 'gif':
+          mimetype = 'image/gif';
+          filename = 'image.gif';
+          break;
+        case 'webp':
+          mimetype = 'image/webp';
+          filename = 'image.webp';
+          break;
+        default:
+          mimetype = 'image/png';
+          filename = 'image.png';
+      }
+
+      // Formatar chatId
+      let chatId = contact;
+      if (!contact.includes('@s.whatsapp.net') && !contact.includes('@c.us') && !contact.includes('@lid')) {
+        let number = contact.replace(/@.*$/, '').replace(/[^\d+]/g, '');
+        if (!number.startsWith('+')) {
+          if (number.startsWith('55')) {
+            number = '+' + number;
+          } else if (number.length >= 10) {
+            number = '+55' + number;
+          }
+        }
+        chatId = `${number.replace('+', '')}@s.whatsapp.net`;
+      }
+
+      console.log(`📷 Enviando imagem para ${chatId}: ${imagePath}`);
+
+      // Criar MessageMedia e enviar
+      // @ts-ignore
+      const imageMedia = new MessageMedia(mimetype, imageBase64, filename);
+      const sentMessage = await this.client.sendMessage(chatId, imageMedia);
+
+      // Enviar para Laravel
+      await this.sendToLaravel('messages', {
+        instance_name: this.instanceName,
+        message_id: sentMessage.id._serialized,
+        from: `${this.instanceName}@bot`,
+        to: contact,
+        message: `[Imagem] ${imagePath}`,
+        timestamp: Date.now(),
+        direction: 'outgoing',
+      });
+
+      console.log(`✅ Imagem enviada para ${chatId}`);
+    } catch (error: any) {
+      console.error('❌ Erro ao enviar imagem:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Envia imagens baseadas em uma lista de triggers
+   * Usado para enviar imagens DEPOIS do áudio/texto
+   */
+  private async sendImagesFromTriggers(contact: string, imageTriggers: string[]): Promise<void> {
+    if (imageTriggers.length === 0) {
+      return;
+    }
+    
+    console.log(`🖼️  Enviando ${imageTriggers.length} imagem(ns): ${imageTriggers.join(', ')}`);
+    
+    // Enviar cada imagem encontrada
+    for (const imageName of imageTriggers) {
+      console.log(`🔍 Procurando imagem: ${imageName}`);
+      const imagePath = this.findImageInAssets(imageName);
+      
+      if (imagePath) {
+        try {
+          console.log(`📤 Enviando imagem: ${imagePath}`);
+          await this.sendImage(contact, imagePath);
+          // Pequeno delay entre imagens
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error: any) {
+          console.error(`❌ Erro ao enviar imagem ${imageName}:`, error.message);
+        }
+      } else {
+        console.warn(`⚠️  Imagem ${imageName} não encontrada em /assets`);
+      }
+    }
+  }
+
   private async sendAIResponse(contact: string, userMessage: string, action: any) {
     try {
       if (!this.isReady) {
@@ -876,7 +1096,7 @@ class WhatsAppBot {
           sensitiveKeywords = action.sensitive_keywords;
         } else if (typeof action.sensitive_keywords === 'string') {
           // Se for string, separar por vírgula
-          sensitiveKeywords = action.sensitive_keywords.split(',').map(k => k.trim()).filter(k => k.length > 0);
+          sensitiveKeywords = action.sensitive_keywords.split(',').map((k: string) => k.trim()).filter((k: string) => k.length > 0);
         }
       }
       
@@ -956,61 +1176,92 @@ class WhatsAppBot {
       }
 
       // Gerar resposta com IA via Laravel
-      const response = await axios.post(
-        `${this.laravelApiUrl}/api/ai/generate`,
-        {
-          prompt: prompt,
-          message: userMessage,
-          provider: provider,
-          model: model,
-          conversation_id: conversationId,
-          use_context: useContext,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
+      let response;
+      try {
+        response = await axios.post(
+          `${this.laravelApiUrl}/api/ai/generate`,
+          {
+            prompt: prompt,
+            message: userMessage,
+            provider: provider,
+            model: model,
+            conversation_id: conversationId,
+            use_context: useContext,
           },
-          timeout: 60000, // 60 segundos para IA
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            timeout: 90000, // 90 segundos para IA (aumentado de 60)
+          }
+        );
+      } catch (axiosError: any) {
+        // Verificar se é timeout
+        if (axiosError.code === 'ECONNABORTED' || axiosError.message.includes('timeout')) {
+          console.error('⏱️  Timeout ao gerar resposta com IA (90s)');
+          throw new Error('TIMEOUT_IA');
         }
-      );
+        throw axiosError;
+      }
 
       if (response.data.success && response.data.data?.response) {
-        const aiResponse = response.data.data.response;
+        let aiResponse = response.data.data.response;
+        
+        console.log(`🤖 Resposta da IA recebida: "${aiResponse}"`);
+        
+        // Extrair triggers de imagem ANTES de processar o texto
+        const imageTriggers = this.extractImageTriggers(aiResponse);
+        
+        // Remover triggers do texto para enviar o áudio/texto primeiro
+        let cleanedResponse = this.removeImageTriggers(aiResponse);
+        
+        // Se após remover os triggers o texto estiver vazio, ainda enviar as imagens depois
+        // Mas primeiro verificar se há texto para enviar
         
         // Dividir conteúdo em partes sensíveis e não sensíveis
         // Passar palavras-chave sensíveis configuráveis do fluxo
         // Garantir que sensitiveKeywords está definido
         const keywordsToUse = sensitiveKeywords || [];
-        const parts = this.splitSensitiveContent(aiResponse, keywordsToUse);
         
-        // Se tem apenas uma parte e não é sensível, pode enviar tudo como áudio
-        if (parts.length === 1 && !parts[0].isSensitive && useAudio) {
-          await this.sendAudioFromText(contact, aiResponse, voiceId);
-        } else {
-          // Enviar cada parte separadamente
-          for (const part of parts) {
-            if (!part.text.trim()) continue; // Pular partes vazias
-            
-            if (part.isSensitive) {
-              // Parte sensível sempre como texto
-              console.log(`📝 Enviando parte sensível como texto: ${part.text.substring(0, 50)}...`);
-              await this.sendMessage(contact, part.text);
-            } else {
-              // Parte não sensível: enviar como áudio se configurado, senão como texto
-              if (useAudio) {
-                console.log(`🎵 Enviando parte como áudio: ${part.text.substring(0, 50)}...`);
-                await this.sendAudioFromText(contact, part.text, voiceId);
-              } else {
+        // Se há texto para enviar (mesmo que vazio após limpeza, pode ter conteúdo antes)
+        if (cleanedResponse && cleanedResponse.trim().length > 0) {
+          const parts = this.splitSensitiveContent(cleanedResponse, keywordsToUse);
+          
+          // Se tem apenas uma parte e não é sensível, pode enviar tudo como áudio
+          if (parts.length === 1 && !parts[0].isSensitive && useAudio) {
+            await this.sendAudioFromText(contact, cleanedResponse, voiceId);
+          } else {
+            // Enviar cada parte separadamente
+            for (const part of parts) {
+              if (!part.text.trim()) continue; // Pular partes vazias
+              
+              if (part.isSensitive) {
+                // Parte sensível sempre como texto
+                console.log(`📝 Enviando parte sensível como texto: ${part.text.substring(0, 50)}...`);
                 await this.sendMessage(contact, part.text);
+              } else {
+                // Parte não sensível: enviar como áudio se configurado, senão como texto
+                if (useAudio) {
+                  console.log(`🎵 Enviando parte como áudio: ${part.text.substring(0, 50)}...`);
+                  await this.sendAudioFromText(contact, part.text, voiceId);
+                } else {
+                  await this.sendMessage(contact, part.text);
+                }
+              }
+              
+              // Pequeno delay entre mensagens para não sobrecarregar
+              if (parts.length > 1) {
+                await new Promise(resolve => setTimeout(resolve, 500));
               }
             }
-            
-            // Pequeno delay entre mensagens para não sobrecarregar
-            if (parts.length > 1) {
-              await new Promise(resolve => setTimeout(resolve, 500));
-            }
           }
+        }
+        
+        // AGORA enviar as imagens DEPOIS do áudio/texto
+        if (imageTriggers.length > 0) {
+          console.log(`🖼️  Enviando ${imageTriggers.length} imagem(ns) após o áudio/texto...`);
+          await this.sendImagesFromTriggers(contact, imageTriggers);
         }
       } else {
         throw new Error('Erro ao gerar resposta com IA');
@@ -1018,9 +1269,42 @@ class WhatsAppBot {
     } catch (error: any) {
       console.error('Erro ao gerar resposta com IA:', error.message);
       
-      // Enviar mensagem de erro se configurado
+      // Verificar se a sessão ainda está ativa antes de tentar enviar mensagem
+      if (!this.isReady) {
+        console.warn('⚠️  WhatsApp desconectado, não é possível enviar mensagem de erro');
+        return;
+      }
+      
+      // Verificar se é timeout específico
+      if (error.message === 'TIMEOUT_IA') {
+        console.warn('⏱️  IA demorou muito para responder. Tentando enviar mensagem de timeout...');
+      }
+      
+      // Enviar mensagem de erro se configurado e sessão estiver ativa
       if (action.error_message) {
-        await this.sendMessage(contact, action.error_message);
+        try {
+          // Verificar novamente se está pronto antes de enviar
+          if (this.isReady) {
+            await this.sendMessage(contact, action.error_message);
+          } else {
+            console.warn('⚠️  Sessão fechada durante o processamento, não foi possível enviar mensagem de erro');
+          }
+        } catch (sendError: any) {
+          // Se falhar ao enviar, apenas logar (não propagar erro)
+          console.error('❌ Erro ao enviar mensagem de erro:', sendError.message);
+          if (sendError.message.includes('Session closed') || sendError.message.includes('page has been closed')) {
+            console.warn('⚠️  Sessão do WhatsApp foi fechada. O bot pode precisar ser reiniciado.');
+          }
+        }
+      } else {
+        // Se não tem mensagem de erro configurada, tentar enviar mensagem padrão
+        try {
+          if (this.isReady) {
+            await this.sendMessage(contact, 'Desculpe, não consegui processar sua mensagem no momento. Tente novamente em instantes.');
+          }
+        } catch (sendError: any) {
+          console.error('❌ Erro ao enviar mensagem padrão de erro:', sendError.message);
+        }
       }
     }
   }
@@ -1045,8 +1329,14 @@ class WhatsAppBot {
 
   async sendMessage(contact: string, message: string) {
     try {
+      // Verificar se está pronto e se o cliente ainda existe
       if (!this.isReady) {
         throw new Error('WhatsApp não está conectado');
+      }
+      
+      // Verificar se o cliente ainda está válido
+      if (!this.client || !this.client.info) {
+        throw new Error('Sessão do WhatsApp foi fechada');
       }
 
       let chatId = contact;
@@ -1116,8 +1406,14 @@ class WhatsAppBot {
 
   private async sendAudioFromText(contact: string, text: string, voiceId: string | null = null) {
     try {
+      // Verificar se está pronto e se o cliente ainda existe
       if (!this.isReady) {
         throw new Error('WhatsApp não está conectado');
+      }
+      
+      // Verificar se o cliente ainda está válido
+      if (!this.client || !this.client.info) {
+        throw new Error('Sessão do WhatsApp foi fechada');
       }
 
       console.log(`🎵 Gerando áudio para: ${text.substring(0, 50)}...`);
