@@ -221,14 +221,12 @@ class WhatsAppBot {
             ]) as any;
           } catch (downloadError: any) {
             console.error('❌ Erro ao baixar áudio:', downloadError.message);
-            messageText = '[Erro ao processar áudio - não foi possível baixar]';
-            // Continuar o fluxo mesmo com erro
+            messageText = ''; // Será ignorada pela validação posterior
+            media = null; // Garantir que media seja null
           }
           
-          if (!media || !media.data) {
-            console.warn('⚠️  Áudio não disponível ou vazio');
-            messageText = '[Áudio não disponível]';
-          } else {
+          // Só processar se conseguiu baixar o áudio
+          if (media && media.data) {
             try {
               // Extrair base64 do formato data:audio/ogg;base64,...
               let audioBase64 = media.data;
@@ -289,20 +287,27 @@ class WhatsAppBot {
               );
 
               if (transcriptionResponse.data.success && transcriptionResponse.data.data?.text) {
-                messageText = transcriptionResponse.data.data.text;
-                console.log(`📝 Áudio convertido para texto: ${messageText}`);
+                const transcribedText = transcriptionResponse.data.data.text;
+                // Validar que a transcrição não está vazia
+                if (transcribedText && transcribedText.trim().length > 0) {
+                  messageText = transcribedText;
+                  console.log(`📝 Áudio convertido para texto: ${messageText}`);
+                } else {
+                  console.warn('⚠️  Transcrição retornou texto vazio, ignorando mensagem');
+                  messageText = ''; // Será ignorada pela validação posterior
+                }
               } else {
-                console.warn('⚠️  Não foi possível converter áudio para texto, usando texto padrão');
-                messageText = '[Áudio não transcrito]';
+                console.warn('⚠️  Não foi possível converter áudio para texto, mensagem será ignorada');
+                messageText = ''; // Será ignorada pela validação posterior
               }
             } catch (processError: any) {
               console.error('❌ Erro ao processar áudio:', processError.message);
-              messageText = messageText || '[Erro ao processar áudio]';
+              messageText = ''; // Será ignorada pela validação posterior
             }
           }
         } catch (audioError: any) {
           console.error('❌ Erro ao converter áudio para texto:', audioError.message);
-          messageText = messageText || '[Erro ao processar áudio]';
+          messageText = ''; // Será ignorada pela validação posterior
         } finally {
           // Limpar arquivo temporário
           if (tempAudioPath && fs.existsSync(tempAudioPath)) {
@@ -316,9 +321,19 @@ class WhatsAppBot {
         }
       }
 
-      // Garantir que messageText não está vazio antes de enviar
-      if (!messageText || messageText.trim().length === 0) {
-        messageText = '[Mensagem vazia]';
+      // VALIDAÇÃO CRÍTICA: Ignorar completamente mensagens vazias
+      // Não processar, não salvar no Laravel e não verificar fluxos
+      if (!messageText || typeof messageText !== 'string' || messageText.trim().length === 0) {
+        console.warn('⚠️  Mensagem vazia ignorada - não será processada nem salva');
+        return; // Retornar imediatamente sem processar
+      }
+
+      const trimmedText = messageText.trim();
+      
+      // Validar que a mensagem não é apenas espaços em branco após trim
+      if (trimmedText.length === 0) {
+        console.warn('⚠️  Mensagem contém apenas espaços em branco - ignorada');
+        return;
       }
 
       // Enviar mensagem para Laravel APÓS processar áudio
@@ -393,6 +408,18 @@ class WhatsAppBot {
 
   private matchFlow(flow: any, messageText: string): boolean {
     if (!flow.is_active) return false;
+
+    // VALIDAÇÃO CRÍTICA: Nunca processar mensagens vazias, mesmo com catch_all
+    if (!messageText || typeof messageText !== 'string' || messageText.trim().length === 0) {
+      return false;
+    }
+    
+    // Verificar também se não é mensagem de erro/vazia
+    const trimmedText = messageText.trim();
+    if (trimmedText === '[Mensagem vazia]' || trimmedText === '[Erro ao processar áudio]' || 
+        trimmedText === '[Áudio não disponível]' || trimmedText === '[Áudio não transcrito]') {
+      return false;
+    }
 
     const triggers = flow.triggers || [];
     const text = messageText.toLowerCase();
