@@ -53,6 +53,7 @@ class FlowController extends Controller
                 'actions.*.use_audio' => 'nullable|boolean',
                 'actions.*.voice_id' => 'nullable|string',
                 'actions.*.error_message' => 'nullable|string',
+                'actions.*.sensitive_keywords' => 'nullable',
                 'is_active' => 'sometimes|boolean',
                 'priority' => 'nullable|integer|min:0',
             ], [
@@ -98,12 +99,28 @@ class FlowController extends Controller
                 }
             }
 
-            // Limpar campos não necessários
+            // Limpar campos não necessários e processar sensitive_keywords
             foreach ($validated['actions'] as &$action) {
                 if ($action['type'] === 'send_message') {
                     unset($action['duration']);
                 } else if ($action['type'] === 'wait') {
                     unset($action['content']);
+                }
+                
+                // Processar sensitive_keywords: se for string, converter para array
+                if (isset($action['sensitive_keywords'])) {
+                    if (is_string($action['sensitive_keywords'])) {
+                        // Se for string separada por vírgula, converter para array
+                        $keywords = array_map('trim', explode(',', $action['sensitive_keywords']));
+                        $keywords = array_filter($keywords, function($k) { return !empty($k); });
+                        $action['sensitive_keywords'] = !empty($keywords) ? $keywords : null;
+                    } elseif (is_array($action['sensitive_keywords'])) {
+                        // Se já for array, limpar valores vazios
+                        $action['sensitive_keywords'] = array_filter(array_map('trim', $action['sensitive_keywords']), function($k) { return !empty($k); });
+                        $action['sensitive_keywords'] = !empty($action['sensitive_keywords']) ? array_values($action['sensitive_keywords']) : null;
+                    } else {
+                        $action['sensitive_keywords'] = null;
+                    }
                 }
             }
 
@@ -146,6 +163,7 @@ class FlowController extends Controller
                 'actions.*.use_audio' => 'nullable|boolean',
                 'actions.*.voice_id' => 'nullable|string',
                 'actions.*.error_message' => 'nullable|string',
+                'actions.*.sensitive_keywords' => 'nullable',
                 'is_active' => 'sometimes|boolean',
                 'priority' => 'nullable|integer|min:0',
             ], [
@@ -179,13 +197,28 @@ class FlowController extends Controller
                     }
                 }
 
-                // Limpar campos não necessários
+                // Limpar campos não necessários e processar sensitive_keywords
                 foreach ($validated['actions'] as &$action) {
                     if ($action['type'] === 'send_message') {
                         unset($action['duration'], $action['prompt'], $action['provider'], $action['model']);
                     } else if ($action['type'] === 'wait') {
                         unset($action['content'], $action['prompt'], $action['provider'], $action['model']);
                     } else if ($action['type'] === 'ai_response') {
+                        // Processar sensitive_keywords: se for string, converter para array
+                        if (isset($action['sensitive_keywords'])) {
+                            if (is_string($action['sensitive_keywords'])) {
+                                // Se for string separada por vírgula, converter para array
+                                $keywords = array_map('trim', explode(',', $action['sensitive_keywords']));
+                                $keywords = array_filter($keywords, function($k) { return !empty($k); });
+                                $action['sensitive_keywords'] = !empty($keywords) ? array_values($keywords) : null;
+                            } elseif (is_array($action['sensitive_keywords'])) {
+                                // Se já for array, limpar valores vazios
+                                $action['sensitive_keywords'] = array_filter(array_map('trim', $action['sensitive_keywords']), function($k) { return !empty($k); });
+                                $action['sensitive_keywords'] = !empty($action['sensitive_keywords']) ? array_values($action['sensitive_keywords']) : null;
+                            } else {
+                                $action['sensitive_keywords'] = null;
+                            }
+                        }
                         unset($action['content'], $action['duration']);
                     }
                 }

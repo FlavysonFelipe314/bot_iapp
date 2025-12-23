@@ -588,19 +588,22 @@ class WhatsAppBot {
     // PRIORIDADE 1: Verificar palavras-chave sensíveis configuráveis (do fluxo)
     // Isso tem prioridade máxima - se configurado, sempre marca como sensível
     if (sensitiveKeywords && sensitiveKeywords.length > 0) {
+      console.log(`🔍 Verificando palavras-chave sensíveis configuradas: ${sensitiveKeywords.join(', ')}`);
       for (const keyword of sensitiveKeywords) {
         if (!keyword || keyword.trim().length === 0) continue;
         
         const keywordLower = keyword.toLowerCase().trim();
+        const lineLower = line.toLowerCase();
         
         // Verificar se a linha contém a palavra-chave (case-insensitive)
         // Usar includes para capturar parcialmente (ex: "CHAVE PIX:" contém "chave pix")
         if (lineLower.includes(keywordLower)) {
-          console.log(`📝 [CONFIGURADO] Detectado conteúdo sensível: "${keyword}"`);
-          console.log(`   Linha completa: ${lineTrimmed.substring(0, 80)}${lineTrimmed.length > 80 ? '...' : ''}`);
+          console.log(`📝 [CONFIGURADO] ✅ Detectado conteúdo sensível: "${keyword}"`);
+          console.log(`   Linha completa: ${lineTrimmed.substring(0, 100)}${lineTrimmed.length > 100 ? '...' : ''}`);
           return true; // SEMPRE retornar true se encontrar palavra-chave configurada
         }
       }
+      console.log(`🔍 Nenhuma palavra-chave sensível configurada foi encontrada na linha`);
     }
     
     // PRIORIDADE 2: Verificar e-mails
@@ -608,35 +611,67 @@ class WhatsAppBot {
       return true;
     }
     
-    // PRIORIDADE 3: Detectar padrões de chave PIX mais amplos
-    // Padrão 1: [CHAVE PIX] ou [CHAVE_PIX] (placeholder entre colchetes)
-    if (/\[.*?(?:chave\s*pix|chave_pix|pix).*?\]/i.test(line)) {
+    // PRIORIDADE 2.5: Detectar chave PIX específica do sistema (CNPJ formatado)
+    // Padrão: "chave pix: 39.956.528/0001-74" ou "chave pix:39.956.528/0001-74" ou apenas "39.956.528/0001-74"
+    if (/\b(?:chave\s*pix|chavepix|link\s*pix|linkpix)\s*:?\s*39\.956\.528\/0001-74/i.test(line)) {
       return true;
     }
     
-    // Padrão 2: *CHAVE PIX:* ou *CHAVE_PIX:* (formato markdown/negrito)
+    // Detectar CNPJ formatado (14 dígitos com pontos, barra e hífen)
+    // Padrão: XX.XXX.XXX/XXXX-XX
+    // Especialmente a chave PIX: 39.956.528/0001-74
+    if (/\b39\.956\.528\/0001-74\b/.test(line)) {
+      // Se tiver contexto de PIX/chave OU se estiver sozinho na linha, é sensível
+      if (/\b(?:chave\s*pix|chavepix|link\s*pix|linkpix|pix)\b/i.test(line) || line.trim().match(/^39\.956\.528\/0001-74$/)) {
+        return true;
+      }
+    }
+    
+    // Detectar qualquer CNPJ formatado com contexto de PIX
+    if (/\b[0-9]{2}\.[0-9]{3}\.[0-9]{3}\/[0-9]{4}-[0-9]{2}\b/.test(line)) {
+      // Se tiver contexto de PIX/chave, é sensível
+      if (/\b(?:chave\s*pix|chavepix|link\s*pix|linkpix|pix)\b/i.test(line)) {
+        return true;
+      }
+    }
+    
+    // PRIORIDADE 3: Detectar padrões de chave PIX mais amplos
+    // Padrão 1: [CHAVE PIX] ou [CHAVE_PIX] (placeholder entre colchetes) - APENAS se tiver código após
+    if (/\[.*?(?:chave\s*pix|chave_pix|pix).*?\]/i.test(line)) {
+      // Verificar se tem código após os colchetes ou dentro
+      const hasCodeAfter = /\].*?[A-Z0-9\-]{25,}/i.test(line) || /\[.*?[A-Z0-9\-]{25,}.*?\]/i.test(line);
+      if (hasCodeAfter) {
+        return true;
+      }
+    }
+    
+    // Padrão 2: *CHAVE PIX:* ou *CHAVE_PIX:* (formato markdown/negrito) - APENAS se tiver código após
     if (/\*.*?(?:chave\s*pix|chave_pix|pix).*?\*:?/i.test(line)) {
-      return true;
+      // Verificar se tem código após o asterisco
+      const hasCodeAfter = /\*.*?\*.*?[A-Z0-9\-]{25,}/i.test(line);
+      if (hasCodeAfter) {
+        return true;
+      }
     }
     
     // Padrão 3: CHAVE_PIX_FICTICIA ou CHAVE_PIX_QUALQUER_COISA (placeholder com underscore)
-    if (/\bCHAVE[_\s]?PIX[_\s]?[A-Z0-9_]+/i.test(line)) {
+    // APENAS se tiver código alfanumérico longo após
+    if (/\bCHAVE[_\s]?PIX[_\s]?[A-Z0-9_]{25,}/i.test(line)) {
       return true;
     }
     
-    // Padrão 4: Qualquer linha que contenha "chave pix" ou "chavepix" seguido de dois pontos
-    // Isso captura: "chave pix:", "chave pix :", "*CHAVE PIX:*", "CHAVE PIX: valor", etc.
-    if (/\b(?:chave\s*pix|chavepix|link\s*pix|linkpix)\s*:?\s*/i.test(line)) {
-      // Se tem "chave pix" seguido de qualquer coisa (código, placeholder, etc), é sensível
+    // Padrão 4: "chave pix:" ou "chavepix:" seguido de código real (não apenas menção)
+    // Verificar se tem "chave pix:" seguido de código alfanumérico longo
+    if (/\b(?:chave\s*pix|chavepix|link\s*pix|linkpix)\s*:\s*[A-Z0-9\-]{25,}/i.test(line)) {
       return true;
     }
     
-    // Padrão 5: "CHAVE PIX: valor" ou "chave pix: valor" (com dois pontos e valor após)
-    if (/\b(?:chave\s*pix|chavepix)\s*:\s*.+/i.test(line)) {
+    // Padrão 5: "CHAVE PIX: valor" - APENAS se o valor for um código longo
+    if (/\b(?:chave\s*pix|chavepix)\s*:\s*[A-Z0-9\-\.]{25,}/i.test(line)) {
       return true;
     }
     
-    // Verificar se tem palavras-chave relacionadas a PIX
+    // Verificar se tem palavras-chave relacionadas a PIX + código real
     const pixKeywords = [
       /\b(segue\s*o?\s*link?\s*pix|segue\s*o?\s*pix|chave\s*pix|link\s*pix)\b/i,
       /\b(envio\s+o?\s*link?\s*pix|envio\s+o?\s*pix)\b/i,
@@ -647,20 +682,19 @@ class WhatsAppBot {
     const hasPixKeyword = pixKeywords.some(pattern => pattern.test(line));
     
     if (hasPixKeyword) {
-      // Se tem palavra-chave PIX, verificar se também tem código ou placeholder
-      const hasPixKey = /\b[A-Z0-9\-]{25,}\b/.test(line) || 
-                        /\b[A-Z0-9]{32,}\b/.test(line) ||
-                        /\[.*?(?:chave|pix).*?\]/i.test(line) ||
-                        /\*.*?(?:chave|pix).*?\*/i.test(line) ||
-                        /\bCHAVE[_\s]?PIX[_\s]?[A-Z0-9_]+/i.test(line);
+      // Se tem palavra-chave PIX, verificar se também tem código REAL (não apenas placeholder)
+      const hasPixKey = /\b[A-Z0-9\-]{32,}\b/.test(line) || // Código de 32+ caracteres
+                        /\b[0-9]{11,14}\b/.test(line) || // CPF/CNPJ
+                        (/\b[A-Z0-9\-]{25,}\b/.test(line) && /\b(?:chave|pix|link)\s*:\s*[A-Z0-9\-]{25,}/i.test(line)); // Código longo com contexto
       
-      // Se tem palavra-chave PIX + (código ou placeholder), é sensível
+      // Se tem palavra-chave PIX + código real, é sensível
       if (hasPixKey) {
         return true;
       }
     }
     
     // Detectar chave PIX real (código longo com contexto de PIX)
+    // APENAS se tiver código de 32+ caracteres E contexto de PIX
     const hasPixContext = /\b(pix|chave\s*pix|link\s*pix)\b/i.test(line);
     const hasLongCode = /\b[A-Z0-9\-]{32,}\b/.test(line);
     
@@ -824,20 +858,27 @@ class WhatsAppBot {
       } else if (markNextAsSensitive) {
         const trimmedLine = line.trim();
         if (trimmedLine.length > 0) {
+          // Ser mais restritivo: só marcar como sensível se realmente parecer ser código/valor
           const isUrl = /^https?:\/\//i.test(trimmedLine);
-          const isCode = /^[0-9A-Z_\-]+$/.test(trimmedLine) && trimmedLine.length > 5;
-          const isShortValue = trimmedLine.length < 30 && !/[.!?]$/.test(trimmedLine);
-          const startsWithLowercaseOrNumber = /^[a-z0-9]/.test(trimmedLine);
-          const isAlphanumericCode = /^[A-Z0-9_\-\.]+$/i.test(trimmedLine) && trimmedLine.length > 10;
+          // Código alfanumérico longo (25+ caracteres) sem espaços - provavelmente é chave/código
+          const isLongCode = /^[A-Z0-9_\-\.]{25,}$/i.test(trimmedLine);
+          // CPF/CNPJ formatado (11 ou 14 dígitos com pontos e hífen)
+          const isFormattedDocument = /^[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}$/.test(trimmedLine) || 
+                                      /^[0-9]{2}\.[0-9]{3}\.[0-9]{3}\/[0-9]{4}-[0-9]{2}$/.test(trimmedLine);
+          // Código alfanumérico médio (10-24 caracteres) sem espaços e sem pontuação final
+          const isMediumCode = /^[A-Z0-9_\-]{10,24}$/i.test(trimmedLine) && !/[.!?]$/.test(trimmedLine);
           
-          if (isUrl || isCode || (isShortValue && startsWithLowercaseOrNumber) || isAlphanumericCode) {
+          // Só marcar como sensível se for claramente um código/valor, não texto normal
+          if (isUrl || isLongCode || isFormattedDocument || isMediumCode) {
             isSensitive = true;
             console.log(`📝 Linha ${i + 1} marcada como sensível (continuação): ${trimmedLine.substring(0, 60)}...`);
             markNextAsSensitive = true;
           } else {
+            // Se a linha seguinte não parece ser código, parar de marcar como sensível
             markNextAsSensitive = false;
           }
         } else {
+          // Linha vazia: se a próxima também for vazia, parar de marcar como sensível
           if (i < lines.length - 1 && lines[i + 1].trim().length === 0) {
             markNextAsSensitive = false;
           }
@@ -1169,18 +1210,34 @@ class WhatsAppBot {
       let conversationId = null;
       if (useContext) {
         try {
+          console.log(`🔍 Buscando contexto para contato: ${contact}, instance: ${this.instanceName}`);
+          
           // Normalizar contato para busca (remover @lid, @s.whatsapp.net, etc)
           let normalizedContact = contact;
+          let numberOnly = contact;
+          
           if (contact.includes('@')) {
             // Extrair apenas o número antes do @
             const match = contact.match(/^(\d+)@/);
             if (match) {
               normalizedContact = match[1];
+              numberOnly = match[1];
             }
           }
           
-          // Buscar conversa pelo contato (tentar com formato original e normalizado)
+          // Tentar múltiplos formatos de contato para encontrar a conversa
+          // 1. Formato original (ex: 5511999999999@s.whatsapp.net)
+          // 2. Apenas número (ex: 5511999999999)
+          // 3. Número sem código do país (ex: 11999999999) - se começar com 55
           const contactsToTry = [contact, normalizedContact];
+          
+          // Se o número começa com 55 (Brasil), tentar também sem o código
+          if (numberOnly.startsWith('55') && numberOnly.length > 10) {
+            const withoutCountryCode = numberOnly.substring(2);
+            contactsToTry.push(withoutCountryCode);
+          }
+          
+          console.log(`🔍 Tentando buscar conversa com formatos: ${contactsToTry.join(', ')}`);
           
           for (const contactToTry of contactsToTry) {
             try {
@@ -1194,27 +1251,40 @@ class WhatsAppBot {
                   headers: {
                     'Accept': 'application/json',
                   },
-                  timeout: 10000, // Aumentado para 10 segundos
+                  timeout: 10000, // 10 segundos
                 }
               );
               
+              console.log(`📡 Resposta da API para contato ${contactToTry}:`, {
+                success: conversationResponse.data?.success,
+                dataLength: conversationResponse.data?.data?.length || 0,
+              });
+              
               if (conversationResponse.data?.data?.length > 0) {
                 conversationId = conversationResponse.data.data[0].id;
-                console.log(`✅ Contexto encontrado: conversation_id=${conversationId} para contato ${contactToTry}`);
+                const messageCount = conversationResponse.data.data[0].messages_count || 0;
+                console.log(`✅ Contexto encontrado: conversation_id=${conversationId} para contato ${contactToTry} (${messageCount} mensagens)`);
                 break;
               }
             } catch (err: any) {
+              console.warn(`⚠️  Erro ao buscar conversa com contato ${contactToTry}:`, err.message);
               // Continuar tentando próximo formato
               continue;
             }
           }
           
           if (!conversationId) {
-            console.warn(`⚠️  Conversa não encontrada para contato: ${contact} (tentou também: ${normalizedContact})`);
+            console.warn(`⚠️  Conversa não encontrada para contato: ${contact} (tentou formatos: ${contactsToTry.join(', ')})`);
+            console.warn(`   Isso pode significar que esta é a primeira mensagem ou o formato do contato não corresponde.`);
+          } else {
+            console.log(`✅ Usando conversation_id=${conversationId} para contexto da IA`);
           }
         } catch (error: any) {
-          console.warn('⚠️  Não foi possível buscar conversation_id:', error.message);
+          console.error('❌ Erro ao buscar conversation_id:', error.message);
+          console.error('   Stack:', error.stack);
         }
+      } else {
+        console.log(`⚠️  use_context está desativado - a IA não usará histórico da conversa`);
       }
 
       // Gerar resposta com IA via Laravel
@@ -1256,7 +1326,32 @@ class WhatsAppBot {
           throw new Error('A resposta da IA está vazia');
         }
         
-        console.log(`🤖 Resposta da IA recebida: "${aiResponse}"`);
+        console.log(`🤖 Resposta da IA recebida (antes da limpeza): "${aiResponse}"`);
+        
+        // REMOVER qualquer menção a "[Áudio]", "[Audio]", "audio:", "áudio:" no início do texto
+        // A IA pode estar gerando respostas com esse prefixo, mas não devemos enviá-lo
+        const originalResponse = aiResponse;
+        
+        // Remover padrões como: "[Áudio]", "[Audio]", "audio:", "áudio:", "Audio:", "Áudio:"
+        aiResponse = aiResponse.replace(/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/gi, '').trim();
+        // Remover múltiplos prefixos no início
+        while (/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/gi.test(aiResponse)) {
+          aiResponse = aiResponse.replace(/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/gi, '').trim();
+        }
+        
+        // Também remover se começar com "audio" ou "áudio" seguido de espaço ou dois pontos
+        aiResponse = aiResponse.replace(/^(audio|áudio)\s*:?\s*/gi, '').trim();
+        
+        // Remover qualquer texto que comece com menção a áudio seguido de espaço
+        // Exemplo: "audio só pra fechar" -> "só pra fechar"
+        aiResponse = aiResponse.replace(/^(audio|áudio)\s+/gi, '').trim();
+        
+        // Log se houve alteração
+        if (originalResponse !== aiResponse) {
+          console.log(`🧹 Limpeza aplicada: "${originalResponse.substring(0, 80)}..." -> "${aiResponse.substring(0, 80)}..."`);
+        }
+        
+        console.log(`🤖 Resposta da IA após limpeza: "${aiResponse.substring(0, 100)}${aiResponse.length > 100 ? '...' : ''}"`);
         
         // Extrair triggers de imagem ANTES de processar o texto
         const imageTriggers = this.extractImageTriggers(aiResponse);
@@ -1464,6 +1559,18 @@ class WhatsAppBot {
   }
 
   private async sendAudioFromText(contact: string, text: string, voiceId: string | null = null) {
+    // Remover qualquer menção a "[Áudio]", "[Audio]", "audio:", "áudio:" no início do texto
+    // Fazer isso antes do try para estar disponível no catch
+    let textToConvert = text.replace(/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/gi, '').trim();
+    // Remover múltiplos prefixos no início
+    while (/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/gi.test(textToConvert)) {
+      textToConvert = textToConvert.replace(/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/gi, '').trim();
+    }
+    // Também remover se começar com "audio" ou "áudio" seguido de espaço ou dois pontos
+    textToConvert = textToConvert.replace(/^(audio|áudio)\s*:?\s*/gi, '').trim();
+    // Remover qualquer texto que comece com menção a áudio seguido de espaço
+    textToConvert = textToConvert.replace(/^(audio|áudio)\s+/gi, '').trim();
+    
     try {
       // Verificar se está pronto e se o cliente ainda existe
       if (!this.isReady) {
@@ -1474,14 +1581,19 @@ class WhatsAppBot {
       if (!this.client || !this.client.info) {
         throw new Error('Sessão do WhatsApp foi fechada');
       }
+      
+      // Validar que ainda há texto após remover o prefixo
+      if (!textToConvert || textToConvert.trim().length === 0) {
+        throw new Error('Texto vazio após remover prefixo [Áudio]');
+      }
 
-      console.log(`🎵 Gerando áudio para: ${text.substring(0, 50)}...`);
+      console.log(`🎵 Gerando áudio para: ${textToConvert.substring(0, 50)}...`);
 
       // Gerar áudio via Laravel
       const audioResponse = await axios.post(
         `${this.laravelApiUrl}/api/elevenlabs/text-to-speech`,
         {
-          text: text,
+          text: textToConvert,
           voice_id: voiceId,
         },
         {
@@ -1610,13 +1722,13 @@ class WhatsAppBot {
         sendAudioAsVoice: true, // Enviar como nota de voz
       });
 
-      // Enviar para Laravel
+      // Enviar para Laravel (salvar com prefixo [Áudio] apenas para registro)
       await this.sendToLaravel('messages', {
         instance_name: this.instanceName,
         message_id: sentMessage.id._serialized,
         from: `${this.instanceName}@bot`,
         to: contact,
-        message: `[Áudio] ${text}`,
+        message: `[Áudio] ${textToConvert}`,
         timestamp: Date.now(),
         direction: 'outgoing',
       });
@@ -1637,7 +1749,26 @@ class WhatsAppBot {
       // Se falhar, enviar como texto
       console.log('📝 Enviando resposta como texto devido ao erro no áudio');
       try {
-        await this.sendMessage(contact, text);
+        // Usar textToConvert que já foi limpo do prefixo [Áudio]
+        // Se textToConvert estiver vazio, usar o texto original limpo
+        let cleanedText = textToConvert && textToConvert.trim().length > 0 
+          ? textToConvert 
+          : text.replace(/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/gi, '').trim();
+        
+        // Garantir que não há prefixo [Áudio] ou menção a audio (limpeza adicional)
+        while (/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/gi.test(cleanedText)) {
+          cleanedText = cleanedText.replace(/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/gi, '').trim();
+        }
+        // Remover também se começar com "audio" ou "áudio" seguido de espaço
+        cleanedText = cleanedText.replace(/^(audio|áudio)\s*:?\s*/gi, '').trim();
+        cleanedText = cleanedText.replace(/^(audio|áudio)\s+/gi, '').trim();
+        
+        // Validar que há texto para enviar
+        if (!cleanedText || cleanedText.trim().length === 0) {
+          throw new Error('Texto vazio após limpeza do prefixo [Áudio]');
+        }
+        
+        await this.sendMessage(contact, cleanedText);
       } catch (textError: any) {
         console.error('❌ Erro ao enviar mensagem de texto como fallback:', textError.message);
       }

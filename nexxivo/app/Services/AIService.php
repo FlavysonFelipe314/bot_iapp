@@ -163,12 +163,21 @@ class AIService
         
         // Adicionar histórico de conversa se disponível
         if (!empty($conversationHistory)) {
-            $historyText = "\n\n--- Histórico da Conversa ---\n";
+            Log::info('Construindo prompt com histórico', [
+                'history_count' => count($conversationHistory),
+                'last_messages' => array_slice($conversationHistory, -3),
+            ]);
+            
+            $historyText = "\n\n--- Histórico da Conversa (IMPORTANTE: Use este contexto para responder) ---\n";
             foreach ($conversationHistory as $msg) {
                 $sender = $msg['direction'] === 'incoming' ? 'Cliente' : 'Atendente';
-                $historyText .= "{$sender}: {$msg['message']}\n";
+                // Limpar prefixos [Áudio] do histórico também
+                $cleanMessage = preg_replace('/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/i', '', $msg['message']);
+                $cleanMessage = preg_replace('/^(audio|áudio)\s*:?\s*/i', '', $cleanMessage);
+                $historyText .= "{$sender}: {$cleanMessage}\n";
             }
             $historyText .= "--- Fim do Histórico ---\n\n";
+            $historyText .= "IMPORTANTE: Baseie sua resposta no histórico acima. NÃO repita perguntas que já foram respondidas. Continue a conversa de forma natural.\n\n";
             
             // Inserir histórico antes da mensagem atual
             $prompt = str_replace('{message}', $historyText . "Cliente: {$userMessage}", $promptTemplate);
@@ -178,6 +187,10 @@ class AIService
             if ($prompt === $promptTemplate) {
                 $prompt = $historyText . $prompt . "\n\nCliente: {$userMessage}";
             }
+        } else {
+            Log::warning('Prompt sendo construído SEM histórico de conversa', [
+                'user_message_preview' => substr($userMessage, 0, 50),
+            ]);
         }
         
         return $prompt;

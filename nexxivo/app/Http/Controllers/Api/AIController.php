@@ -72,20 +72,29 @@ class AIController extends Controller
     /**
      * Busca histórico de mensagens da conversa
      */
-    private function getConversationHistory(int $conversationId, int $limit = 20): array
+    private function getConversationHistory(int $conversationId, int $limit = 30): array
     {
         $messages = \App\Models\Message::where('conversation_id', $conversationId)
             ->orderBy('created_at', 'asc')
             ->limit($limit)
             ->get();
 
-        return $messages->map(function ($msg) {
+        $history = $messages->map(function ($msg) {
             return [
                 'message' => $msg->message,
                 'direction' => $msg->direction,
                 'timestamp' => $msg->timestamp->toIso8601String(),
             ];
         })->toArray();
+        
+        // Log para debug
+        Log::info('Histórico de conversa carregado', [
+            'conversation_id' => $conversationId,
+            'messages_count' => count($history),
+            'last_messages' => array_slice($history, -3), // Últimas 3 mensagens para debug
+        ]);
+
+        return $history;
     }
 }
 
