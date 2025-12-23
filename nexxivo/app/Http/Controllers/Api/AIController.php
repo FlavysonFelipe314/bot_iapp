@@ -31,6 +31,15 @@ class AIController extends Controller
             'conversation_history' => 'nullable|array',
         ]);
 
+        // VALIDAÇÃO CRÍTICA: Não processar mensagens vazias
+        if (empty(trim($validated['message']))) {
+            Log::warning('Tentativa de processar mensagem vazia bloqueada');
+            return response()->json([
+                'success' => false,
+                'message' => 'Mensagens vazias não podem ser processadas',
+            ], 400);
+        }
+
         try {
             $conversationHistory = [];
             

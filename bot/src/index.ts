@@ -1558,6 +1558,98 @@ class WhatsAppBot {
     }
   }
 
+  private async sendAudioFromBase64(contact: string, audioBase64: string, format: string, text: string = '') {
+    try {
+      // Verificar se está pronto e se o cliente ainda existe
+      if (!this.isReady) {
+        throw new Error('WhatsApp não está conectado');
+      }
+      
+      // Verificar se o cliente ainda está válido
+      if (!this.client || !this.client.info) {
+        throw new Error('Sessão do WhatsApp foi fechada');
+      }
+
+      // Limpar o base64: remover espaços, quebras de linha e caracteres inválidos
+      audioBase64 = audioBase64.trim().replace(/\s/g, '');
+
+      // Validar formato base64 básico
+      const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
+      if (!base64Regex.test(audioBase64)) {
+        throw new Error('Formato base64 inválido');
+      }
+
+      // Decodificar para validar
+      let audioBuffer: Buffer;
+      try {
+        audioBuffer = Buffer.from(audioBase64, 'base64');
+        
+        if (audioBuffer.length === 0) {
+          throw new Error('Buffer de áudio vazio após decodificação');
+        }
+
+        const maxSizeBytes = 15 * 1024 * 1024; // 15MB
+        if (audioBuffer.length > maxSizeBytes) {
+          throw new Error(`Áudio muito grande: ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB (máximo: 15MB)`);
+        }
+      } catch (decodeError: any) {
+        throw new Error(`Erro ao processar áudio: ${decodeError.message}`);
+      }
+
+      // Formatar chatId
+      let chatId = contact;
+      if (!contact.includes('@s.whatsapp.net') && !contact.includes('@c.us') && !contact.includes('@lid')) {
+        let number = contact.replace(/@.*$/, '').replace(/[^\d+]/g, '');
+        if (!number.startsWith('+')) {
+          if (number.startsWith('55')) {
+            number = '+' + number;
+          } else if (number.length >= 10) {
+            number = '+55' + number;
+          }
+        }
+        chatId = `${number.replace('+', '')}@s.whatsapp.net`;
+      }
+
+      // Determinar mimetype e extensão baseado no formato
+      let mimetype: string;
+      let filename: string;
+      
+      if (format === 'mp3') {
+        mimetype = 'audio/mpeg';
+        filename = 'audio.mp3';
+      } else {
+        mimetype = 'audio/ogg; codecs=opus';
+        filename = 'audio.ogg';
+      }
+
+      console.log(`📤 Enviando áudio para ${chatId} (${audioBuffer.length} bytes)`);
+
+      // Enviar áudio via WhatsApp
+      // @ts-ignore
+      const audioMedia = new MessageMedia(mimetype, audioBase64, filename);
+      
+      const sentMessage = await this.client.sendMessage(chatId, audioMedia, {
+        sendAudioAsVoice: true, // Enviar como nota de voz
+      });
+
+      // Enviar para Laravel
+      await this.sendToLaravel('messages', {
+        instance_name: this.instanceName,
+        message_id: sentMessage.id._serialized,
+        from: `${this.instanceName}@bot`,
+        to: contact,
+        message: `[Áudio] ${text || '[Áudio enviado]'}`,
+        timestamp: Date.now(),
+        direction: 'outgoing',
+      });
+
+      console.log(`✅ Áudio enviado para ${chatId}`);
+    } catch (error: any) {
+      console.error('❌ Erro ao enviar áudio:', error.message);
+      throw error;
+    }
+  }
+
   private async sendAudioFromText(contact: string, text: string, voiceId: string | null = null) {
     // Remover qualquer menção a "[Áudio]", "[Audio]", "audio:", "áudio:" no início do texto
     // Fazer isso antes do try para estar disponível no catch
@@ -1911,6 +2003,44 @@ class WhatsAppBot {
           } catch (error: any) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false, error: error.message }));
+          }
+        });
+        return;
+      }
+
+      // Rota para enviar áudio
+      if (method === 'POST' && url.pathname === '/send-audio') {
+        let body = '';
+        req.on('data', chunk => {
+          body += chunk.toString();
+        });
+
+        req.on('end', async () => {
+          try {
+            const data = JSON.parse(body);
+            const { contact, text, audio_base64, audio_format } = data;
+
+            if (!contact || (!text && !audio_base64)) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, error: 'contact e (text ou audio_base64) são obrigatórios' }));
+              return;
+            }
+
+            console.log(`🎵 Recebido pedido para enviar áudio para ${contact}`);
+
+            // Responder imediatamente para evitar timeout
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, message: 'Áudio sendo processado' }));
+
+            // Se tem audio_base64, enviar diretamente
+            if (audio_base64) {
+              await this.sendAudioFromBase64(contact, audio_base64, audio_format || 'ogg_opus', text || '');
+            } else if (text) {
+              // Se só tem texto, gerar áudio primeiro
+              await this.sendAudioFromText(contact, text, null);
+            }
+          } catch (error: any) {
+            console.error('Erro ao processar áudio:', error.message);
           }
         });
         return;

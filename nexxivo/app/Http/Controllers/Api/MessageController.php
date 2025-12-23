@@ -53,6 +53,29 @@ class MessageController extends Controller
             'timestamp' => \Carbon\Carbon::createFromTimestamp($validated['timestamp']),
         ]);
 
+        // LÓGICA DE MOVIMENTAÇÃO AUTOMÁTICA NO KANBAN
+        // Se a mensagem é incoming (usuário respondeu)
+        if ($direction === 'incoming') {
+            // Verificar se a última mensagem anterior foi outgoing (da IA/bot)
+            $lastOutgoingMessage = Message::where('conversation_id', $conversation->id)
+                ->where('direction', 'outgoing')
+                ->where('id', '<', $message->id)
+                ->orderBy('id', 'desc')
+                ->first();
+
+            // Se encontrou mensagem da IA antes desta resposta do usuário
+            if ($lastOutgoingMessage) {
+                // Mover para "em_atendimento" quando usuário responde à IA
+                if ($conversation->kanban_status !== 'em_atendimento') {
+                    $conversation->update(['kanban_status' => 'em_atendimento']);
+                    Log::info('Conversa movida para em_atendimento', [
+                        'conversation_id' => $conversation->id,
+                        'contact' => $conversation->contact,
+                    ]);
+                }
+            }
+        }
+
         Log::info('Mensagem recebida', [
             'instance' => $validated['instance_name'],
             'from' => $validated['from'],

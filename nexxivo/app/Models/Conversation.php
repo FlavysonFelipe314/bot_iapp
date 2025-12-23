@@ -13,6 +13,7 @@ class Conversation extends Model
         'contact_name',
         'last_message_at',
         'is_archived',
+        'kanban_status',
     ];
 
     protected $casts = [

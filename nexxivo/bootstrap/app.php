@@ -12,7 +12,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // CORS já está habilitado por padrão no Laravel 11
+        $middleware->alias([
+            'admin' => \App\Http\Middleware\AdminMiddleware::class,
+        ]);
+    })
+    ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule): void {
+        // Agendar comando para atualizar status do Kanban a cada 5 minutos
+        $schedule->command('kanban:update-status')
+            ->everyFiveMinutes()
+            ->withoutOverlapping();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
