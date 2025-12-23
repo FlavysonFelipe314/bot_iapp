@@ -114,6 +114,21 @@
                 <p class="text-xs text-gray-500 mt-1 ml-6">A mensagem será convertida em áudio usando ElevenLabs</p>
             </div>
             
+            <div id="voiceSelection" class="mb-4 hidden">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                    <i class="fas fa-microphone mr-1"></i>Voz
+                </label>
+                <div class="flex gap-2">
+                    <select id="remarketingVoiceId" class="flex-1 border-2 border-gray-300 rounded-lg p-3 focus:border-purple-500 focus:outline-none">
+                        <option value="">Carregando vozes...</option>
+                    </select>
+                    <button type="button" onclick="loadVoices()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300" title="Recarregar vozes">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Selecione a voz que será usada para o áudio</p>
+            </div>
+            
             <div class="mb-4">
                 <label class="block text-sm font-semibold text-gray-700 mb-2">Enviar para</label>
                 <select id="remarketingTarget" class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-purple-500 focus:outline-none" required>
@@ -204,13 +219,60 @@ function updateCounters() {
 
 function openRemarketingModal() {
     document.getElementById('remarketingModal').classList.remove('hidden');
+    // Carregar vozes se o checkbox de áudio estiver marcado
+    if (document.getElementById('sendAsAudio').checked) {
+        loadVoices();
+    }
 }
 
 function closeRemarketingModal() {
     document.getElementById('remarketingModal').classList.add('hidden');
     document.getElementById('remarketingForm').reset();
     document.getElementById('selectedContacts').classList.add('hidden');
+    document.getElementById('voiceSelection').classList.add('hidden');
 }
+
+// Carregar vozes disponíveis do ElevenLabs
+function loadVoices() {
+    const voiceSelect = document.getElementById('remarketingVoiceId');
+    voiceSelect.innerHTML = '<option value="">Carregando vozes...</option>';
+    voiceSelect.disabled = true;
+    
+    axios.get('/api/elevenlabs/voices')
+        .then(response => {
+            if (response.data.success && response.data.data) {
+                const voices = response.data.data;
+                voiceSelect.innerHTML = '<option value="">Usar voz padrão</option>';
+                
+                voices.forEach(voice => {
+                    const option = document.createElement('option');
+                    option.value = voice.voice_id;
+                    option.textContent = `${voice.name}${voice.labels?.accent ? ' (' + voice.labels.accent + ')' : ''}`;
+                    voiceSelect.appendChild(option);
+                });
+                
+                voiceSelect.disabled = false;
+            } else {
+                voiceSelect.innerHTML = '<option value="">Erro ao carregar vozes</option>';
+            }
+        })
+        .catch(error => {
+            console.error('Erro ao carregar vozes:', error);
+            voiceSelect.innerHTML = '<option value="">Erro ao carregar vozes. Use a voz padrão.</option>';
+            voiceSelect.disabled = false;
+        });
+}
+
+// Mostrar/esconder seleção de voz quando checkbox de áudio é alterado
+document.getElementById('sendAsAudio').addEventListener('change', function() {
+    const voiceSelection = document.getElementById('voiceSelection');
+    if (this.checked) {
+        voiceSelection.classList.remove('hidden');
+        loadVoices();
+    } else {
+        voiceSelection.classList.add('hidden');
+    }
+});
 
 document.getElementById('remarketingTarget').addEventListener('change', function() {
     if (this.value === 'selected') {
@@ -243,12 +305,16 @@ function sendRemarketing(event) {
         return;
     }
     
+    // Obter voice_id selecionado (se houver)
+    const voiceId = sendAsAudio ? document.getElementById('remarketingVoiceId').value : null;
+    
     // Enviar para o backend
     axios.post('/api/remarketing/send', {
         message: message,
         target: target,
         contacts: selectedContacts,
-        send_as_audio: sendAsAudio
+        send_as_audio: sendAsAudio,
+        voice_id: voiceId || null
     })
     .then(response => {
         alert('Mensagens enviadas com sucesso!');

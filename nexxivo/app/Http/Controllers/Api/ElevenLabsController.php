@@ -97,5 +97,29 @@ class ElevenLabsController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Lista todas as vozes disponíveis
+     */
+    public function getVoices()
+    {
+        try {
+            $voices = $this->elevenLabsService->getVoices();
+
+            return response()->json([
+                'success' => true,
+                'data' => $voices,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar vozes do ElevenLabs', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao buscar vozes: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
 }
 

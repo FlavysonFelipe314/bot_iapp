@@ -41,6 +41,7 @@ Route::post('/ai/generate', [AIController::class, 'generate']);
 // Rotas de ElevenLabs (Áudio)
 Route::post('/elevenlabs/text-to-speech', [App\Http\Controllers\Api\ElevenLabsController::class, 'textToSpeech']);
 Route::post('/elevenlabs/speech-to-text', [App\Http\Controllers\Api\ElevenLabsController::class, 'speechToText']);
+Route::get('/elevenlabs/voices', [App\Http\Controllers\Api\ElevenLabsController::class, 'getVoices']);
 
 // Rotas de Remarketing
 Route::post('/remarketing/send', [App\Http\Controllers\Api\RemarketingController::class, 'send']);

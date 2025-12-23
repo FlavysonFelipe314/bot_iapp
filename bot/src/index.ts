@@ -2027,6 +2027,14 @@ class WhatsAppBot {
             }
 
             console.log(`🎵 Recebido pedido para enviar áudio para ${contact}`);
+            console.log(`📊 Dados recebidos:`, {
+              contact,
+              hasText: !!text,
+              hasAudioBase64: !!audio_base64,
+              audioFormat: audio_format,
+              textLength: text?.length || 0,
+              audioBase64Length: audio_base64?.length || 0,
+            });
 
             // Responder imediatamente para evitar timeout
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2034,13 +2042,32 @@ class WhatsAppBot {
 
             // Se tem audio_base64, enviar diretamente
             if (audio_base64) {
+              console.log(`🎤 Enviando áudio via sendAudioFromBase64 para ${contact}`);
               await this.sendAudioFromBase64(contact, audio_base64, audio_format || 'ogg_opus', text || '');
+              console.log(`✅ Áudio enviado com sucesso para ${contact}`);
             } else if (text) {
               // Se só tem texto, gerar áudio primeiro
+              console.log(`🎤 Gerando e enviando áudio via sendAudioFromText para ${contact}`);
               await this.sendAudioFromText(contact, text, null);
+              console.log(`✅ Áudio gerado e enviado com sucesso para ${contact}`);
             }
           } catch (error: any) {
-            console.error('Erro ao processar áudio:', error.message);
+            console.error('❌ Erro ao processar áudio:', error.message);
+            console.error('❌ Stack trace:', error.stack);
+            // Tentar reportar erro ao Laravel se possível
+            try {
+              await this.sendToLaravel('messages', {
+                instance_name: this.instanceName,
+                message_id: `error-${Date.now()}`,
+                from: `${this.instanceName}@bot`,
+                to: data?.contact || 'unknown',
+                message: `[ERRO] Falha ao enviar áudio de remarketing: ${error.message}`,
+                timestamp: Date.now(),
+                direction: 'outgoing',
+              });
+            } catch (laravelError: any) {
+              console.error('❌ Erro ao reportar erro ao Laravel:', laravelError.message);
+            }
           }
         });
         return;

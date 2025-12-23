@@ -4,12 +4,19 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Conversation;
+use App\Services\ElevenLabsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class RemarketingController extends Controller
 {
+    private $elevenLabsService;
+
+    public function __construct(ElevenLabsService $elevenLabsService)
+    {
+        $this->elevenLabsService = $elevenLabsService;
+    }
     public function send(Request $request)
     {
         $validated = $request->validate([
@@ -17,6 +24,7 @@ class RemarketingController extends Controller
             'target' => 'required|string|in:all,novo,em_atendimento,aguardando,fechado,selected',
             'contacts' => 'nullable|array',
             'send_as_audio' => 'nullable|boolean',
+            'voice_id' => 'nullable|string',
         ]);
 
         // Validar que a mensagem não está vazia
@@ -70,28 +78,33 @@ class RemarketingController extends Controller
         $errors = [];
 
         $sendAsAudio = $validated['send_as_audio'] ?? false;
-        $laravelApiUrl = config('app.url', 'http://localhost:8000');
 
         // Se for enviar como áudio, gerar uma vez para todos
         $audioBase64 = null;
         $audioFormat = null;
         if ($sendAsAudio) {
             try {
-                $audioResponse = Http::timeout(60)->post("{$laravelApiUrl}/api/elevenlabs/text-to-speech", [
-                    'text' => $validated['message'],
+                Log::info('Gerando áudio para remarketing', [
+                    'message_length' => strlen($validated['message']),
+                    'message_preview' => substr($validated['message'], 0, 100),
                 ]);
 
-                if (!$audioResponse->successful() || !$audioResponse->json()['success']) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Erro ao gerar áudio: ' . ($audioResponse->json()['message'] ?? 'Erro desconhecido'),
-                    ], 500);
-                }
+                // Usar o serviço diretamente ao invés de fazer requisição HTTP
+                $voiceId = $validated['voice_id'] ?? null;
+                $audioResult = $this->elevenLabsService->textToSpeech($validated['message'], $voiceId);
 
-                $audioData = $audioResponse->json()['data'];
-                $audioBase64 = $audioData['audio'];
-                $audioFormat = $audioData['format'] ?? 'ogg_opus';
+                $audioBase64 = $audioResult['audio'];
+                $audioFormat = $audioResult['format'] ?? 'ogg_opus';
+
+                Log::info('Áudio gerado com sucesso para remarketing', [
+                    'format' => $audioFormat,
+                    'base64_length' => strlen($audioBase64),
+                ]);
             } catch (\Exception $e) {
+                Log::error('Exceção ao gerar áudio para remarketing', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Erro ao gerar áudio: ' . $e->getMessage(),
@@ -104,11 +117,24 @@ class RemarketingController extends Controller
             try {
                 if ($sendAsAudio && $audioBase64) {
                     // Enviar áudio via endpoint especial do bot
+                    Log::info('Enviando áudio de remarketing para contato', [
+                        'contact' => $contact,
+                        'audio_format' => $audioFormat,
+                        'audio_base64_length' => strlen($audioBase64),
+                        'bot_url' => $botUrl,
+                    ]);
+
                     $response = Http::timeout(60)->post("{$botUrl}/send-audio", [
                         'contact' => $contact,
                         'text' => $validated['message'],
                         'audio_base64' => $audioBase64,
                         'audio_format' => $audioFormat,
+                    ]);
+
+                    Log::info('Resposta do bot ao enviar áudio', [
+                        'contact' => $contact,
+                        'status' => $response->status(),
+                        'response' => $response->json(),
                     ]);
                 } else {
                     // Enviar como texto normal
@@ -120,12 +146,23 @@ class RemarketingController extends Controller
 
                 if ($response->successful()) {
                     $successCount++;
+                    Log::info('Mensagem de remarketing enviada com sucesso', [
+                        'contact' => $contact,
+                        'send_as_audio' => $sendAsAudio,
+                    ]);
                 } else {
                     $errorCount++;
+                    $errorResponse = $response->json();
                     $errors[] = [
                         'contact' => $contact,
-                        'error' => $response->json() ?? 'Erro desconhecido',
+                        'error' => $errorResponse ?? 'Erro desconhecido',
                     ];
+                    Log::warning('Erro ao enviar mensagem de remarketing', [
+                        'contact' => $contact,
+                        'status' => $response->status(),
+                        'error' => $errorResponse,
+                        'send_as_audio' => $sendAsAudio,
+                    ]);
                 }
 
                 // Pequeno delay entre mensagens para não sobrecarregar
@@ -136,9 +173,10 @@ class RemarketingController extends Controller
                     'contact' => $contact,
                     'error' => $e->getMessage(),
                 ];
-                Log::error('Erro ao enviar mensagem de remarketing', [
+                Log::error('Exceção ao enviar mensagem de remarketing', [
                     'contact' => $contact,
                     'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
                     'send_as_audio' => $sendAsAudio,
                 ]);
             }

@@ -359,5 +359,28 @@ class ElevenLabsService
 
         return null;
     }
+
+    /**
+     * Busca todas as vozes disponíveis na conta do ElevenLabs
+     * @return array Array com informações das vozes
+     */
+    public function getVoices(): array
+    {
+        if (empty($this->apiKey)) {
+            throw new \Exception("API Key do ElevenLabs não configurada");
+        }
+
+        $response = Http::withHeaders([
+            'xi-api-key' => $this->apiKey,
+        ])->timeout(30)->get('https://api.elevenlabs.io/v1/voices');
+
+        if (!$response->successful()) {
+            throw new \Exception("Erro ao buscar vozes do ElevenLabs: " . $response->body());
+        }
+
+        $data = $response->json();
+        
+        return $data['voices'] ?? [];
+    }
 }
 
