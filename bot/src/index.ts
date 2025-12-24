@@ -146,7 +146,7 @@ class WhatsAppBot {
     }
   }
 
-  private async sendToLaravel(endpoint: string, data: any) {
+  private async sendToLaravel(endpoint: string, data: any): Promise<void> {
     try {
       const response = await axios.post(`${this.laravelApiUrl}/api/${endpoint}`, data, {
         headers: {
@@ -156,6 +156,8 @@ class WhatsAppBot {
         timeout: 10000,
       });
       console.log(`✅ Dados enviados para Laravel (${endpoint}):`, response.status);
+      // Garantir que a Promise seja resolvida completamente
+      return Promise.resolve();
     } catch (error: any) {
       // Sempre mostrar erro para debug
       if (error.code === 'ECONNREFUSED') {
@@ -166,6 +168,8 @@ class WhatsAppBot {
           console.error('Resposta do servidor:', error.response.data);
         }
       }
+      // Rejeitar a Promise para que o await aguarde o erro também
+      return Promise.reject(error);
     }
   }
 
@@ -669,9 +673,20 @@ class WhatsAppBot {
       if (messageAccepted) {
         console.log(`📨 Mensagem recebida e aceita de ${contactName}: ${messageText}`);
         // Verificar se há fluxo configurado
+        // IMPORTANTE: Aguardar completamente a execução do fluxo antes de liberar o lock
+        console.log(`⏳ Aguardando processamento completo do fluxo para ${contact}...`);
         await this.checkFlows(message.from, messageText);
+        console.log(`✅ Processamento do fluxo concluído para ${contact}`);
       } else {
         console.warn(`⚠️  Mensagem não foi aceita pelo Laravel, fluxos não serão processados: ${messageText.substring(0, 50)}...`);
+      }
+
+      // Liberar lock APENAS após todas as operações assíncronas terminarem completamente
+      // Isso inclui: envio de mensagens, geração de áudio, envio de áudio, salvamento no Laravel
+      if (contact && this.processingContacts.get(contact)) {
+        console.log(`🔓 Liberando lock para contato: ${contact} (todas as operações concluídas)`);
+        this.processingContacts.set(contact, false);
+        console.log(`✅ Lock liberado para contato: ${contact}`);
       }
     } catch (error: any) {
       console.error('Erro ao processar mensagem:', error.message);
@@ -698,11 +713,11 @@ class WhatsAppBot {
       } else {
         console.warn('⚠️  Não enviando mensagem de fallback - mensagem estava vazia ou inválida');
       }
-    } finally {
-      // SEMPRE liberar o lock do contato, mesmo em caso de erro ou retorno antecipado
+      
+      // Liberar lock mesmo em caso de erro, mas apenas após tentar enviar fallback
       if (contact && this.processingContacts.get(contact)) {
         this.processingContacts.set(contact, false);
-        console.log(`🔓 Lock liberado para contato: ${contact}`);
+        console.log(`🔓 Lock liberado para contato: ${contact} (após erro)`);
       }
     }
   }
