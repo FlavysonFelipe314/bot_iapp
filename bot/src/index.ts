@@ -169,6 +169,239 @@ class WhatsAppBot {
     }
   }
 
+  /**
+   * Verifica se uma mensagem contém oferta de produtos ou serviços
+   */
+  private isSalesOffer(messageText: string): boolean {
+    if (!messageText || typeof messageText !== 'string') {
+      return false;
+    }
+
+    const text = messageText.toLowerCase();
+    
+    // Palavras-chave que indicam oferta de produtos/serviços
+    const salesKeywords = [
+      'ofereço',
+      'oferecemos',
+      'oferecer',
+      'vendo',
+      'vendemos',
+      'vender',
+      'venda',
+      'comprar',
+      'compre',
+      'promoção',
+      'promocao',
+      'desconto',
+      'ofert',
+      'produto',
+      'serviço',
+      'servico',
+      'contratar',
+      'contrato',
+      'parceria',
+      'negócio',
+      'negocio',
+      'oportunidade',
+      'investimento',
+      'marketing',
+      'publicidade',
+      'anúncio',
+      'anuncio',
+      'landing page',
+      'site',
+      'sistema',
+      'software',
+      'app',
+      'aplicativo',
+      'desenvolvimento',
+      'criação',
+      'criacao',
+      'design',
+      'consultoria',
+      'treinamento',
+      'curso',
+      'workshop',
+      'evento',
+      'plano',
+      'pacote',
+      'solução',
+      'solucao',
+      'empresa',
+      'empresarial',
+      'b2b',
+      'b2c',
+    ];
+
+    // Verificar se a mensagem contém palavras-chave de oferta
+    for (const keyword of salesKeywords) {
+      if (text.includes(keyword)) {
+        // Verificar se não é apenas uma pergunta sobre o próprio serviço
+        const isQuestion = text.includes('?') || 
+                          text.includes('qual') || 
+                          text.includes('como') ||
+                          text.includes('quando') ||
+                          text.includes('onde') ||
+                          text.includes('quanto');
+        
+        // Se contém palavra-chave de venda E não parece ser pergunta, provavelmente é oferta
+        if (!isQuestion || text.includes('ofereço') || text.includes('vendo') || text.includes('vender')) {
+          console.log(`💰 Oferta detectada (palavra-chave: "${keyword}"): ${messageText.substring(0, 100)}...`);
+          return true;
+        }
+      }
+    }
+
+    // Padrões específicos de oferta
+    const salesPatterns = [
+      /gostaria de (oferecer|vender|apresentar)/i,
+      /tenho (um|uma) (produto|serviço|solução|oportunidade)/i,
+      /posso (oferecer|vender|apresentar)/i,
+      /quero (oferecer|vender|apresentar)/i,
+      /estou (oferecendo|vendendo|apresentando)/i,
+      /trabalho com/i,
+      /atendo (empresas|clientes)/i,
+      /fazemos (sites|sistemas|aplicativos)/i,
+      /desenvolvemos/i,
+      /criamos/i,
+      /oferecemos (serviços|produtos|soluções)/i,
+    ];
+
+    for (const pattern of salesPatterns) {
+      if (pattern.test(text)) {
+        console.log(`💰 Oferta detectada (padrão): ${messageText.substring(0, 100)}...`);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Verifica se um contato está bloqueado
+   */
+  private async isContactBlocked(contact: string): Promise<boolean> {
+    try {
+      const response = await axios.get(
+        `${this.laravelApiUrl}/api/conversations`,
+        {
+          params: {
+            contact: contact,
+            instance_name: this.instanceName,
+          },
+          headers: {
+            'Accept': 'application/json',
+          },
+          timeout: 5000,
+        }
+      );
+
+      if (response.data.success && response.data.data?.length > 0) {
+        const conversation = response.data.data[0];
+        return conversation.is_blocked === true;
+      }
+
+      return false;
+    } catch (error: any) {
+      console.warn(`⚠️  Erro ao verificar se contato está bloqueado: ${error.message}`);
+      return false; // Em caso de erro, não bloquear
+    }
+  }
+
+  /**
+   * Bloqueia um contato e envia mensagem de recusa
+   */
+  private async blockContactAndRefuse(contact: string, contactName: string, messageText: string, messageFrom: string): Promise<void> {
+    try {
+      // Bloquear contato no Laravel
+      const response = await axios.get(
+        `${this.laravelApiUrl}/api/conversations`,
+        {
+          params: {
+            contact: contact,
+            instance_name: this.instanceName,
+          },
+          headers: {
+            'Accept': 'application/json',
+          },
+          timeout: 5000,
+        }
+      );
+
+      if (response.data.success && response.data.data?.length > 0) {
+        const conversation = response.data.data[0];
+        
+        // Atualizar conversa para bloquear
+        await axios.put(
+          `${this.laravelApiUrl}/api/conversations/${conversation.id}/block`,
+          {},
+          {
+            headers: {
+              'Accept': 'application/json',
+            },
+            timeout: 5000,
+          }
+        );
+
+        console.log(`🚫 Contato bloqueado: ${contactName} (${contact})`);
+      }
+
+      // Enviar mensagem de agradecimento e recusa
+      const refusalMessage = `Olá! Obrigado pelo contato. No momento, não temos interesse em produtos ou serviços adicionais. Agradecemos a compreensão!`;
+      
+      await this.sendMessage(messageFrom, refusalMessage);
+      console.log(`✅ Mensagem de recusa enviada para ${contactName}`);
+    } catch (error: any) {
+      console.error(`❌ Erro ao bloquear contato: ${error.message}`);
+    }
+  }
+
+  /**
+   * Verifica se uma mensagem é de outro bot e deve ser ignorada
+   */
+  private isBotMessage(message: Message, contactName: string): boolean {
+    // Verificar nome do contato para palavras-chave de bot
+    const botKeywords = [
+      'bot',
+      'automático',
+      'automatico',
+      'assistente virtual',
+      'atendimento automático',
+      'sistema',
+      'chatbot',
+      'whatsapp business api',
+      'waba',
+    ];
+
+    const contactNameLower = contactName.toLowerCase();
+    for (const keyword of botKeywords) {
+      if (contactNameLower.includes(keyword)) {
+        console.log(`🤖 Mensagem detectada como bot (nome contém "${keyword}"): ${contactName}`);
+        return true;
+      }
+    }
+
+    // Verificar se a mensagem tem padrões típicos de bot
+    const messageText = (message.body || '').toLowerCase();
+    const botMessagePatterns = [
+      /^\[áudio\]/i, // Mensagens que começam com [Áudio] de forma automatizada
+      /^\[audio\]/i,
+      /esta é uma mensagem automática/i,
+      /mensagem automática/i,
+      /sistema de atendimento/i,
+      /chatbot/i,
+    ];
+
+    for (const pattern of botMessagePatterns) {
+      if (pattern.test(messageText)) {
+        console.log(`🤖 Mensagem detectada como bot (padrão de mensagem automatizada)`);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   private async handleIncomingMessage(message: Message) {
     // Extrair contato no início para garantir que está disponível no finally
     let contact = message.from || '';
@@ -181,6 +414,27 @@ class WhatsAppBot {
       // Ignorar mensagens próprias e status
       if (message.fromMe || message.isStatus) {
         return;
+      }
+
+      // Extrair nome do contato para verificar se é bot
+      let contactName = message.from || 'Desconhecido';
+      if (message.notifyName) {
+        contactName = message.notifyName;
+      } else if (numberMatch) {
+        contactName = numberMatch[1];
+      }
+
+      // Verificar se é mensagem de outro bot e ignorar
+      if (this.isBotMessage(message, contactName)) {
+        console.log(`🤖 Mensagem de bot ignorada: ${contactName} (${contact})`);
+        return; // Ignorar mensagem de bot
+      }
+
+      // Verificar se contato está bloqueado
+      const isBlocked = await this.isContactBlocked(contact);
+      if (isBlocked) {
+        console.log(`🚫 Mensagem ignorada: contato ${contactName} (${contact}) está bloqueado`);
+        return; // Ignorar mensagem de contato bloqueado
       }
 
       // Verificar se já está processando uma mensagem deste contato
@@ -196,23 +450,9 @@ class WhatsAppBot {
       const messageId = message.id._serialized;
       const timestamp = message.timestamp * 1000; // Converter para milissegundos
 
-      // Extrair informações do contato diretamente do message.from
-      // Formato: "5511999999999@s.whatsapp.net" ou "5511999999999@c.us"
-      let contactName = message.from || 'Desconhecido';
-      let contactNumber = message.from || '';
-
-      // Extrair número do formato "5511999999999@s.whatsapp.net"
-      const numberMatch = message.from?.match(/^(\d+)@/);
-      if (numberMatch) {
-        contactNumber = numberMatch[1];
-        contactName = numberMatch[1]; // Usar número como nome padrão
-      }
-
-      // Tentar obter nome do contato de forma opcional (sem bloquear se falhar)
-      // Usar notifyName se disponível (nome salvo no WhatsApp)
-      if (message.notifyName) {
-        contactName = message.notifyName;
-      }
+      // contactName já foi definido acima na verificação de bot
+      // contactNumber é o número extraído do contato
+      const contactNumber = contact;
 
       // Verificar se é mensagem de áudio e converter para texto
       // WhatsApp usa 'ptt' para notas de voz (push-to-talk)
@@ -363,6 +603,15 @@ class WhatsAppBot {
         console.warn('⚠️  Mensagem com placeholder de erro/vazia ignorada - não será processada nem salva');
         this.processingContacts.set(contact, false); // Liberar lock antes de retornar
         return; // Retornar imediatamente sem processar
+      }
+
+      // Verificar se é oferta de produtos/serviços
+      if (this.isSalesOffer(trimmedText)) {
+        console.log(`💰 Oferta de produto/serviço detectada de ${contactName}: ${trimmedText.substring(0, 100)}...`);
+        // Bloquear contato e enviar mensagem de recusa
+        await this.blockContactAndRefuse(contact, contactName, trimmedText, message.from);
+        this.processingContacts.set(contact, false); // Liberar lock
+        return; // Não processar mais mensagens deste contato
       }
 
       // Enviar mensagem para Laravel APÓS processar áudio

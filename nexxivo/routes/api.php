@@ -20,6 +20,7 @@ Route::post('/flow-executions', [FlowExecutionController::class, 'store']);
 Route::get('/conversations', [ConversationController::class, 'index']);
 Route::get('/conversations/{id}', [ConversationController::class, 'show']);
 Route::post('/conversations/{id}/archive', [ConversationController::class, 'archive']);
+Route::put('/conversations/{id}/block', [ConversationController::class, 'block']);
 Route::delete('/conversations/clear-all', [ConversationController::class, 'clearAll']);
 
 Route::get('/messages', [MessageController::class, 'index']);

@@ -19,6 +19,8 @@ class ConversationController extends Controller
         $query = Conversation::with('latestMessage')
             ->where('is_archived', $isArchived)
             ->orderBy('last_message_at', 'desc');
+        
+        // Não filtrar por is_blocked aqui - deixar o bot verificar individualmente
 
         if ($instanceName) {
             $query->where('instance_name', $instanceName);
@@ -68,6 +70,18 @@ class ConversationController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Conversa arquivada',
+        ]);
+    }
+
+    public function block($id)
+    {
+        $conversation = Conversation::findOrFail($id);
+        $conversation->update(['is_blocked' => true]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Contato bloqueado',
+            'data' => $conversation,
         ]);
     }
 
