@@ -346,42 +346,83 @@ class WhatsAppBot {
       }
 
       // Enviar mensagem para Laravel APÓS processar áudio
-      await this.sendToLaravel('messages', {
-        instance_name: this.instanceName,
-        message_id: messageId,
-        from: message.from,
-        to: message.to,
-        message: messageText,
-        timestamp: timestamp,
-        direction: 'incoming',
-        contact_name: contactName,
-        contact_number: contactNumber,
-        raw_message: {
-          type: message.type,
-          hasMedia: message.hasMedia,
-          isGroupMsg: message.isGroupMsg,
-        },
-      });
+      // Verificar resposta do Laravel - só processar se aceitar
+      let messageAccepted = false;
+      try {
+        const response = await axios.post(
+          `${this.laravelApiUrl}/api/messages`,
+          {
+            instance_name: this.instanceName,
+            message_id: messageId,
+            from: message.from,
+            to: message.to,
+            message: messageText,
+            timestamp: timestamp,
+            direction: 'incoming',
+            contact_name: contactName,
+            contact_number: contactNumber,
+            raw_message: {
+              type: message.type,
+              hasMedia: message.hasMedia,
+              isGroupMsg: message.isGroupMsg,
+            },
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            timeout: 10000,
+          }
+        );
+        
+        // Só considerar aceita se status for 200-299
+        if (response.status >= 200 && response.status < 300) {
+          messageAccepted = true;
+          console.log(`✅ Mensagem aceita pelo Laravel: ${messageText.substring(0, 50)}...`);
+        }
+      } catch (error: any) {
+        // Se Laravel rejeitou (400), não processar
+        if (error.response?.status === 400) {
+          console.warn('⚠️  Mensagem rejeitada pelo Laravel (provavelmente vazia), não será processada');
+          return; // Retornar sem processar fluxos
+        }
+        // Para outros erros, logar mas não bloquear
+        console.error('❌ Erro ao enviar mensagem para Laravel:', error.message);
+      }
 
-      console.log(`📨 Mensagem recebida de ${contactName}: ${messageText}`);
-
-      // Verificar se há fluxo configurado
-      await this.checkFlows(message.from, messageText);
+      // Só processar fluxos se a mensagem foi aceita pelo Laravel
+      if (messageAccepted) {
+        console.log(`📨 Mensagem recebida e aceita de ${contactName}: ${messageText}`);
+        // Verificar se há fluxo configurado
+        await this.checkFlows(message.from, messageText);
+      } else {
+        console.warn(`⚠️  Mensagem não foi aceita pelo Laravel, fluxos não serão processados: ${messageText.substring(0, 50)}...`);
+      }
     } catch (error: any) {
       console.error('Erro ao processar mensagem:', error.message);
-      // Tentar enviar pelo menos informações básicas para o Laravel
-      try {
-        await this.sendToLaravel('messages', {
-          instance_name: this.instanceName,
-          message_id: message.id?._serialized || Date.now().toString(),
-          from: message.from || 'unknown',
-          message: message.body || '',
-          timestamp: Date.now(),
-          direction: 'incoming',
-          error: error.message,
-        });
-      } catch (fallbackError: any) {
-        console.error('Erro ao enviar mensagem de fallback:', fallbackError.message);
+      // NÃO tentar enviar mensagens vazias ou com erro para o Laravel
+      // Isso pode causar loops infinitos e múltiplas respostas
+      const errorMessage = message.body || '';
+      if (errorMessage && errorMessage.trim().length > 0 && 
+          errorMessage.trim() !== '[Mensagem vazia]' &&
+          errorMessage.trim() !== '[Erro ao processar áudio]') {
+        // Só tentar enviar se a mensagem original não estava vazia
+        try {
+          await this.sendToLaravel('messages', {
+            instance_name: this.instanceName,
+            message_id: message.id?._serialized || Date.now().toString(),
+            from: message.from || 'unknown',
+            message: errorMessage,
+            timestamp: Date.now(),
+            direction: 'incoming',
+            error: error.message,
+          });
+        } catch (fallbackError: any) {
+          console.error('Erro ao enviar mensagem de fallback:', fallbackError.message);
+        }
+      } else {
+        console.warn('⚠️  Não enviando mensagem de fallback - mensagem estava vazia ou inválida');
       }
     }
   }
