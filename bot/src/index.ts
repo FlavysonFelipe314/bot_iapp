@@ -384,11 +384,14 @@ class WhatsAppBot {
       } catch (error: any) {
         // Se Laravel rejeitou (400), não processar
         if (error.response?.status === 400) {
-          console.warn('⚠️  Mensagem rejeitada pelo Laravel (provavelmente vazia), não será processada');
-          return; // Retornar sem processar fluxos
+          console.warn(`⚠️  Mensagem rejeitada pelo Laravel (provavelmente vazia), não será processada: ${messageText.substring(0, 50)}...`);
+          // NÃO processar fluxos se Laravel rejeitou
+          return; // Retornar imediatamente sem processar fluxos
         }
         // Para outros erros, logar mas não bloquear
         console.error('❌ Erro ao enviar mensagem para Laravel:', error.message);
+        // Para outros erros, também não processar para evitar problemas
+        return;
       }
 
       // Só processar fluxos se a mensagem foi aceita pelo Laravel
@@ -2066,9 +2069,11 @@ class WhatsAppBot {
         });
 
         req.on('end', async () => {
+          let contact = 'unknown';
           try {
             const data = JSON.parse(body);
-            const { contact, text, audio_base64, audio_format } = data;
+            contact = data.contact || 'unknown';
+            const { text, audio_base64, audio_format } = data;
 
             if (!contact || (!text && !audio_base64)) {
               res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -2110,7 +2115,7 @@ class WhatsAppBot {
                 instance_name: this.instanceName,
                 message_id: `error-${Date.now()}`,
                 from: `${this.instanceName}@bot`,
-                to: data?.contact || 'unknown',
+                to: contact,
                 message: `[ERRO] Falha ao enviar áudio de remarketing: ${error.message}`,
                 timestamp: Date.now(),
                 direction: 'outgoing',
