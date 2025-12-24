@@ -170,10 +170,26 @@ class AIService
             
             $historyText = "\n\n--- Histórico da Conversa (IMPORTANTE: Use este contexto para responder) ---\n";
             foreach ($conversationHistory as $msg) {
+                // FILTRAR mensagens vazias do histórico
+                $msgText = trim($msg['message'] ?? '');
+                if (empty($msgText) || 
+                    $msgText === '[Mensagem vazia]' || 
+                    $msgText === '[Erro ao processar áudio]' ||
+                    $msgText === '[Áudio não disponível]' ||
+                    $msgText === '[Áudio não transcrito]') {
+                    continue; // Pular mensagens vazias
+                }
+                
                 $sender = $msg['direction'] === 'incoming' ? 'Cliente' : 'Atendente';
                 // Limpar prefixos [Áudio] do histórico também
-                $cleanMessage = preg_replace('/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/i', '', $msg['message']);
+                $cleanMessage = preg_replace('/^(\[Áudio\]|\[Audio\]|audio:|áudio:|Audio:|Áudio:)\s*/i', '', $msgText);
                 $cleanMessage = preg_replace('/^(audio|áudio)\s*:?\s*/i', '', $cleanMessage);
+                
+                // Validar que ainda há conteúdo após limpeza
+                if (empty(trim($cleanMessage))) {
+                    continue; // Pular se ficou vazio após limpeza
+                }
+                
                 $historyText .= "{$sender}: {$cleanMessage}\n";
             }
             $historyText .= "--- Fim do Histórico ---\n\n";

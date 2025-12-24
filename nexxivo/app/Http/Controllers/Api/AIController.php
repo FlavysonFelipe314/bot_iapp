@@ -88,13 +88,22 @@ class AIController extends Controller
             ->limit($limit)
             ->get();
 
-        $history = $messages->map(function ($msg) {
+        // Filtrar mensagens vazias antes de mapear
+        $history = $messages->filter(function ($msg) {
+            $msgText = trim($msg->message ?? '');
+            // Rejeitar mensagens vazias ou placeholders de erro
+            return !empty($msgText) && 
+                   $msgText !== '[Mensagem vazia]' && 
+                   $msgText !== '[Erro ao processar áudio]' &&
+                   $msgText !== '[Áudio não disponível]' &&
+                   $msgText !== '[Áudio não transcrito]';
+        })->map(function ($msg) {
             return [
                 'message' => $msg->message,
                 'direction' => $msg->direction,
                 'timestamp' => $msg->timestamp->toIso8601String(),
             ];
-        })->toArray();
+        })->values()->toArray(); // values() reindexa o array após filtrar
         
         // Log para debug
         Log::info('Histórico de conversa carregado', [

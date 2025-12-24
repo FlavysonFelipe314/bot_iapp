@@ -335,6 +335,15 @@ class WhatsAppBot {
         console.warn('⚠️  Mensagem contém apenas espaços em branco - ignorada');
         return;
       }
+      
+      // Validar que não é placeholder de mensagem vazia ou erro
+      if (trimmedText === '[Mensagem vazia]' || 
+          trimmedText === '[Erro ao processar áudio]' ||
+          trimmedText === '[Áudio não disponível]' ||
+          trimmedText === '[Áudio não transcrito]') {
+        console.warn('⚠️  Mensagem com placeholder de erro/vazia ignorada - não será processada nem salva');
+        return; // Retornar imediatamente sem processar
+      }
 
       // Enviar mensagem para Laravel APÓS processar áudio
       await this.sendToLaravel('messages', {

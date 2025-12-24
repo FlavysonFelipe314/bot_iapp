@@ -23,6 +23,24 @@ class MessageController extends Controller
             'raw_message' => 'nullable|array',
         ]);
 
+        // VALIDAÇÃO CRÍTICA: Rejeitar mensagens vazias ou com placeholder de mensagem vazia
+        $messageText = trim($validated['message']);
+        if (empty($messageText) || 
+            $messageText === '[Mensagem vazia]' || 
+            $messageText === '[Erro ao processar áudio]' ||
+            $messageText === '[Áudio não disponível]' ||
+            $messageText === '[Áudio não transcrito]') {
+            Log::warning('Tentativa de salvar mensagem vazia bloqueada', [
+                'instance' => $validated['instance_name'],
+                'from' => $validated['from'],
+                'message_preview' => substr($validated['message'], 0, 50),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Mensagens vazias não podem ser salvas',
+            ], 400);
+        }
+
         $direction = $validated['direction'] ?? 'incoming';
         $contact = $direction === 'incoming' ? $validated['from'] : ($validated['to'] ?? $validated['from']);
 
