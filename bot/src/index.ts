@@ -24,6 +24,7 @@ class WhatsAppBot {
   private isReady: boolean = false;
   private httpServer: any = null;
   private botPort: number;
+  private processingContacts: Map<string, boolean> = new Map(); // Rastrear contatos em processamento
 
   constructor() {
     this.instanceName = process.env.INSTANCE_NAME || 'bot-instance';
@@ -169,11 +170,27 @@ class WhatsAppBot {
   }
 
   private async handleIncomingMessage(message: Message) {
+    // Extrair contato no início para garantir que está disponível no finally
+    let contact = message.from || '';
+    const numberMatch = message.from?.match(/^(\d+)@/);
+    if (numberMatch) {
+      contact = numberMatch[1];
+    }
+
     try {
       // Ignorar mensagens próprias e status
       if (message.fromMe || message.isStatus) {
         return;
       }
+
+      // Verificar se já está processando uma mensagem deste contato
+      if (this.processingContacts.get(contact)) {
+        console.log(`⚠️  Mensagem ignorada: já existe uma mensagem sendo processada para ${contact}`);
+        return; // Ignorar esta mensagem
+      }
+
+      // Marcar contato como em processamento
+      this.processingContacts.set(contact, true);
 
       let messageText = message.body || '';
       const messageId = message.id._serialized;
@@ -325,6 +342,7 @@ class WhatsAppBot {
       // Não processar, não salvar no Laravel e não verificar fluxos
       if (!messageText || typeof messageText !== 'string' || messageText.trim().length === 0) {
         console.warn('⚠️  Mensagem vazia ignorada - não será processada nem salva');
+        this.processingContacts.set(contact, false); // Liberar lock antes de retornar
         return; // Retornar imediatamente sem processar
       }
 
@@ -333,6 +351,7 @@ class WhatsAppBot {
       // Validar que a mensagem não é apenas espaços em branco após trim
       if (trimmedText.length === 0) {
         console.warn('⚠️  Mensagem contém apenas espaços em branco - ignorada');
+        this.processingContacts.set(contact, false); // Liberar lock antes de retornar
         return;
       }
       
@@ -342,6 +361,7 @@ class WhatsAppBot {
           trimmedText === '[Áudio não disponível]' ||
           trimmedText === '[Áudio não transcrito]') {
         console.warn('⚠️  Mensagem com placeholder de erro/vazia ignorada - não será processada nem salva');
+        this.processingContacts.set(contact, false); // Liberar lock antes de retornar
         return; // Retornar imediatamente sem processar
       }
 
@@ -386,11 +406,13 @@ class WhatsAppBot {
         if (error.response?.status === 400) {
           console.warn(`⚠️  Mensagem rejeitada pelo Laravel (provavelmente vazia), não será processada: ${messageText.substring(0, 50)}...`);
           // NÃO processar fluxos se Laravel rejeitou
+          this.processingContacts.set(contact, false); // Liberar lock antes de retornar
           return; // Retornar imediatamente sem processar fluxos
         }
         // Para outros erros, logar mas não bloquear
         console.error('❌ Erro ao enviar mensagem para Laravel:', error.message);
         // Para outros erros, também não processar para evitar problemas
+        this.processingContacts.set(contact, false); // Liberar lock antes de retornar
         return;
       }
 
@@ -426,6 +448,12 @@ class WhatsAppBot {
         }
       } else {
         console.warn('⚠️  Não enviando mensagem de fallback - mensagem estava vazia ou inválida');
+      }
+    } finally {
+      // SEMPRE liberar o lock do contato, mesmo em caso de erro ou retorno antecipado
+      if (contact && this.processingContacts.get(contact)) {
+        this.processingContacts.set(contact, false);
+        console.log(`🔓 Lock liberado para contato: ${contact}`);
       }
     }
   }
