@@ -609,15 +609,6 @@ class WhatsAppBot {
         return; // Retornar imediatamente sem processar
       }
 
-      // Verificar se é oferta de produtos/serviços
-      if (this.isSalesOffer(trimmedText)) {
-        console.log(`💰 Oferta de produto/serviço detectada de ${contactName}: ${trimmedText.substring(0, 100)}...`);
-        // Bloquear contato e enviar mensagem de recusa
-        await this.blockContactAndRefuse(contact, contactName, trimmedText, message.from);
-        this.processingContacts.set(contact, false); // Liberar lock
-        return; // Não processar mais mensagens deste contato
-      }
-
       // Enviar mensagem para Laravel APÓS processar áudio
       // Verificar resposta do Laravel - só processar se aceitar
       let messageAccepted = false;
