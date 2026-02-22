@@ -21,6 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('kanban:update-status')
             ->everyFiveMinutes()
             ->withoutOverlapping();
+        $schedule->command('ollama:warm')
+            ->everyFiveMinutes()
+            ->withoutOverlapping(5);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

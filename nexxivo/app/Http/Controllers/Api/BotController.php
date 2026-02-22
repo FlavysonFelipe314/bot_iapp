@@ -83,7 +83,7 @@ class BotController extends Controller
         ]);
     }
 
-    public function sendMessage(Request $request)
+    public function sendMessage(Request $request, \App\Services\EvolutionApiService $evolution)
     {
         $validated = $request->validate([
             'instance_name' => 'required|string',
@@ -91,33 +91,60 @@ class BotController extends Controller
             'message' => 'required|string',
         ]);
 
-        $botUrl = config('services.bot.url', env('BOT_URL', 'http://localhost:3001'));
+        $instance = BotInstance::where('instance_name', $validated['instance_name'])
+            ->when(auth()->check(), fn ($q) => $q->where('user_id', auth()->id()))
+            ->first();
 
+        if ($instance && config('services.evolution.apikey')) {
+            try {
+                $evolution->sendText(
+                    $validated['instance_name'],
+                    $validated['contact'],
+                    $validated['message']
+                );
+                $this->persistOutgoingMessage($validated);
+                return response()->json(['success' => true, 'message' => 'Mensagem enviada com sucesso']);
+            } catch (\Throwable $e) {
+                Log::warning('Evolution sendMessage failed', ['error' => $e->getMessage()]);
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 500);
+            }
+        }
+
+        $botUrl = config('services.bot.url', env('BOT_URL', 'http://localhost:3001'));
         try {
             $response = Http::timeout(30)->post("{$botUrl}/send-message", [
                 'contact' => $validated['contact'],
                 'message' => $validated['message'],
             ]);
-
             if ($response->successful()) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Mensagem enviada com sucesso',
-                    'data' => $response->json(),
-                ]);
+                return response()->json(['success' => true, 'message' => 'Mensagem enviada com sucesso', 'data' => $response->json()]);
             }
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Erro ao enviar mensagem',
-                'error' => $response->json(),
-            ], $response->status());
+            return response()->json(['success' => false, 'message' => 'Erro ao enviar mensagem', 'error' => $response->json()], $response->status());
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Erro ao enviar mensagem. Verifique se o bot está rodando.',
-                'error' => $e->getMessage(),
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'Erro ao enviar mensagem. Verifique se o bot está rodando.', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    private function persistOutgoingMessage(array $validated): void
+    {
+        $conversation = \App\Models\Conversation::where('instance_name', $validated['instance_name'])
+            ->where('contact', $validated['contact'])
+            ->first();
+        if ($conversation) {
+            \App\Models\Message::create([
+                'conversation_id' => $conversation->id,
+                'instance_name' => $validated['instance_name'],
+                'message_id' => 'ev_' . uniqid(),
+                'from' => $validated['instance_name'] . '@bot',
+                'to' => $validated['contact'],
+                'message' => $validated['message'],
+                'direction' => 'outgoing',
+                'timestamp' => now(),
+            ]);
+            $conversation->update(['last_message_at' => now()]);
         }
     }
 }

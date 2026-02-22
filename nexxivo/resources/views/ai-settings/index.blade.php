@@ -53,13 +53,13 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">API Key do Gemini</label>
                         <input type="password" name="gemini_api_key" value="{{ $settings['gemini_api_key'] }}" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <p class="mt-1 text-sm text-gray-500">Obtenha sua chave em: <a href="https://makersuite.google.com/app/apikey" target="_blank" class="text-blue-600 hover:underline">Google AI Studio</a></p>
+                        <p class="mt-1 text-sm text-gray-500">Obtenha sua chave em: <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-600 hover:underline">Google AI Studio</a>. Cole a chave acima e clique em Salvar. Se já salvou antes, pode deixar em branco para manter a chave atual.</p>
                     </div>
 
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Modelo do Gemini</label>
                         <input type="text" name="gemini_model" value="{{ $settings['gemini_model'] }}" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <p class="mt-1 text-sm text-gray-500">Modelo do Gemini (ex: gemini-pro, gemini-pro-vision)</p>
+                        <p class="mt-1 text-sm text-gray-500">Modelo do Gemini (ex: gemini-2.0-flash, gemini-pro)</p>
                     </div>
                 </div>
             </div>

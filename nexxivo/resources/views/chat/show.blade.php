@@ -143,20 +143,51 @@ document.getElementById('message-form').addEventListener('submit', async (e) => 
 
 // Auto-scroll para o final
 const messagesContainer = document.getElementById('messages-container');
-messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-// Polling para novas mensagens (opcional - pode ser melhorado com WebSockets)
+// Último ID de mensagem exibido (para só acrescentar mensagens novas)
+let lastMessageId = {{ $conversation->messages->isEmpty() ? 0 : $conversation->messages->max('id') }};
+
+function scrollToBottom() {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+scrollToBottom();
+
+function renderMessage(msg) {
+    const isOutgoing = msg.direction === 'outgoing';
+    const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+    const div = document.createElement('div');
+    div.className = 'flex ' + (isOutgoing ? 'justify-end' : 'justify-start');
+    div.dataset.messageId = msg.id;
+    div.innerHTML = `
+        <div class="max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${isOutgoing ? 'bg-blue-500 text-white' : 'bg-white text-gray-900 border border-gray-200'}">
+            <p class="text-sm">${escapeHtml(msg.message || '')}</p>
+            <p class="text-xs mt-1 opacity-75">${timeStr}</p>
+        </div>
+    `;
+    return div;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Polling para novas mensagens na conversa aberta (a cada 3s, só quando a aba está visível)
 setInterval(async () => {
+    if (document.visibilityState !== 'visible') return;
     try {
-        const response = await axios.get(`/api/messages?conversation_id=${conversationId}`);
-        const messages = response.data.data;
-        
-        // Verificar se há novas mensagens e atualizar a interface
-        // Implementação simplificada - em produção, usar WebSockets seria melhor
-    } catch (error) {
+        const response = await axios.get(`/api/messages?conversation_id=${conversationId}&after_id=${lastMessageId}`);
+        const messages = response.data.data || [];
+        for (const msg of messages) {
+            messagesContainer.appendChild(renderMessage(msg));
+            lastMessageId = Math.max(lastMessageId, msg.id);
+        }
+        if (messages.length) scrollToBottom();
+    } catch (err) {
         // Silenciar erros de polling
     }
-}, 5000);
+}, 3000);
 </script>
 @endsection
 

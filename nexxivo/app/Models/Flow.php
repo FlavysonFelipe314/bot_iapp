@@ -10,6 +10,7 @@ class Flow extends Model
     protected $fillable = [
         'name',
         'description',
+        'instance_name',
         'triggers',
         'actions',
         'is_active',

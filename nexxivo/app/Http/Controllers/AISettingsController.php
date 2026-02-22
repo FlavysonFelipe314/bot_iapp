@@ -14,7 +14,7 @@ class AISettingsController extends Controller
             'ollama_url' => AISetting::get('ollama_url', 'http://localhost:11434'),
             'ollama_model' => AISetting::get('ollama_model', 'llama2'),
             'gemini_api_key' => AISetting::get('gemini_api_key', ''),
-            'gemini_model' => AISetting::get('gemini_model', 'gemini-pro'),
+            'gemini_model' => AISetting::get('gemini_model', 'gemini-2.0-flash'),
             'elevenlabs_api_key' => AISetting::get('elevenlabs_api_key', ''),
             'elevenlabs_voice_id' => AISetting::get('elevenlabs_voice_id', 'JBFqnCBsd6RMkjVDRZzb'),
             'elevenlabs_model' => AISetting::get('elevenlabs_model', 'eleven_multilingual_v2'),
@@ -37,10 +37,10 @@ class AISettingsController extends Controller
         ]);
 
         foreach ($validated as $key => $value) {
-            if ($key === 'elevenlabs_api_key' && empty($value)) {
-                // Não atualizar se estiver vazio (manter valor existente)
+            if (in_array($key, ['gemini_api_key', 'elevenlabs_api_key'], true) && (string)$value === '') {
                 continue;
             }
+            $value = is_string($value) ? trim($value) : $value;
             AISetting::set($key, $value);
         }
 

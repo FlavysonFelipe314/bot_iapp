@@ -9,12 +9,13 @@ class CrmController extends Controller
 {
     public function index()
     {
-        // Buscar conversas agrupadas por status do kanban
+        $instanceNames = \App\Models\BotInstance::where('user_id', auth()->id())->pluck('instance_name');
         $statuses = ['novo', 'em_atendimento', 'aguardando', 'fechado'];
-        
+
         $conversationsByStatus = [];
         foreach ($statuses as $status) {
             $conversationsByStatus[$status] = Conversation::with('latestMessage')
+                ->whereIn('instance_name', $instanceNames)
                 ->where('kanban_status', $status)
                 ->where('is_archived', false)
                 ->orderBy('last_message_at', 'desc')
@@ -30,7 +31,8 @@ class CrmController extends Controller
             'kanban_status' => 'required|string|in:novo,em_atendimento,aguardando,fechado',
         ]);
 
-        $conversation = Conversation::findOrFail($id);
+        $instanceNames = \App\Models\BotInstance::where('user_id', auth()->id())->pluck('instance_name');
+        $conversation = Conversation::whereIn('instance_name', $instanceNames)->findOrFail($id);
         $conversation->kanban_status = $request->kanban_status;
         $conversation->save();
 

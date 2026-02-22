@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BotInstance;
 use App\Models\Conversation;
 use App\Models\Message;
 use Illuminate\Http\Request;
@@ -110,15 +111,30 @@ class MessageController extends Controller
     public function index(Request $request)
     {
         $conversationId = $request->query('conversation_id');
+        $afterId = $request->query('after_id');
 
         $query = Message::with('conversation')
-            ->orderBy('created_at', 'asc'); // Ordenar do mais antigo para o mais recente para chat
+            ->orderBy('created_at', 'asc');
 
         if ($conversationId) {
+            $user = $request->user();
+            if (! $user) {
+                return response()->json(['success' => false, 'message' => 'Não autorizado'], 401);
+            }
+            $instanceNames = BotInstance::where('user_id', $user->id)->pluck('instance_name');
+            $allowed = Conversation::whereIn('instance_name', $instanceNames)->where('id', $conversationId)->exists();
+            if (! $allowed) {
+                return response()->json(['success' => false, 'message' => 'Conversa não encontrada'], 404);
+            }
             $query->where('conversation_id', $conversationId);
         }
 
-        $messages = $query->paginate(100); // Aumentar limite para chat
+        // Polling: só mensagens novas (id > after_id)
+        if ($afterId !== null && $afterId !== '') {
+            $query->where('id', '>', (int) $afterId);
+        }
+
+        $messages = $query->paginate(100);
 
         return response()->json([
             'success' => true,
