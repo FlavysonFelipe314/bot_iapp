@@ -21,6 +21,16 @@
             </div>
 
             <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Instância WhatsApp</label>
+                <select name="instance_name" id="flow-instance" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <option value="">Todas as instâncias</option>
+                    @foreach($instances ?? [] as $inst)
+                    <option value="{{ $inst->instance_name }}" {{ ($flow->instance_name ?? '') === $inst->instance_name ? 'selected' : '' }}>{{ $inst->instance_name }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Prioridade</label>
                 <input type="number" name="priority" value="{{ $flow->priority }}" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
             </div>
@@ -252,9 +262,11 @@ document.getElementById('flow-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const form = e.target;
+    const instanceEl = form.querySelector('#flow-instance');
     const data = {
         name: form.querySelector('input[name="name"]').value,
         description: form.querySelector('textarea[name="description"]').value || null,
+        instance_name: instanceEl ? (instanceEl.value || null) : null,
         priority: parseInt(form.querySelector('input[name="priority"]').value) || 0,
         is_active: form.querySelector('input[name="is_active"]').checked,
         triggers: [],

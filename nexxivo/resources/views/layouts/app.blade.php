@@ -83,12 +83,17 @@
                         <a href="/crm" class="nav-link {{ request()->is('crm*') ? 'active' : '' }} inline-flex items-center px-3 pt-1 border-b-2 border-transparent text-sm font-semibold text-gray-700">
                             <i class="fas fa-columns mr-2"></i>CRM Kanban
                         </a>
+                        <a href="{{ route('instances.index') }}" class="nav-link {{ request()->is('instances*') ? 'active' : '' }} inline-flex items-center px-3 pt-1 border-b-2 border-transparent text-sm font-semibold text-gray-700">
+                            <i class="fas fa-mobile-alt mr-2"></i>Instâncias
+                        </a>
                         <a href="/flows" class="nav-link {{ request()->is('flows*') ? 'active' : '' }} inline-flex items-center px-3 pt-1 border-b-2 border-transparent text-sm font-semibold text-gray-700">
                             <i class="fas fa-project-diagram mr-2"></i>Fluxos
                         </a>
+                        @if(Auth::user()->is_admin ?? false)
                         <a href="/ai-settings" class="nav-link {{ request()->is('ai-settings*') ? 'active' : '' }} inline-flex items-center px-3 pt-1 border-b-2 border-transparent text-sm font-semibold text-gray-700">
                             <i class="fas fa-cog mr-2"></i>Configurações IA
                         </a>
+                        @endif
                     </div>
                     @auth
                     <div class="flex items-center">

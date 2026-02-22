@@ -23,7 +23,8 @@ Route::post('/conversations/{id}/archive', [ConversationController::class, 'arch
 Route::put('/conversations/{id}/block', [ConversationController::class, 'block']);
 Route::delete('/conversations/clear-all', [ConversationController::class, 'clearAll']);
 
-Route::get('/messages', [MessageController::class, 'index']);
+// Precisa de sessão web para o polling do chat em tempo real
+Route::get('/messages', [MessageController::class, 'index'])->middleware(['web', 'auth']);
 
 Route::get('/flows', [FlowController::class, 'index']);
 Route::get('/flows/active', [FlowController::class, 'active']);
@@ -46,4 +47,12 @@ Route::get('/elevenlabs/voices', [App\Http\Controllers\Api\ElevenLabsController:
 
 // Rotas de Remarketing
 Route::post('/remarketing/send', [App\Http\Controllers\Api\RemarketingController::class, 'send']);
+
+// Webhook Evolution API (rota pública). Aceita também /evolution/MESSAGES_UPSERT quando webhookByEvents=true
+Route::post('/webhooks/evolution', App\Http\Controllers\Api\EvolutionWebhookController::class)->name('api.webhooks.evolution');
+Route::post('/webhooks/evolution/{evolutionEvent}', App\Http\Controllers\Api\EvolutionWebhookController::class)->where('evolutionEvent', '.*');
+Route::post('/webhooks/evolution-messages-upsert', App\Http\Controllers\Api\EvolutionWebhookController::class);
+Route::post('/webhooks/evolution/messages-upsert', App\Http\Controllers\Api\EvolutionWebhookController::class);
+// Simula mensagem recebida (teste): GET /api/webhooks/evolution-simulate?instance=user-1-suporte&text=Oi
+Route::get('/webhooks/evolution-simulate', App\Http\Controllers\Api\EvolutionWebhookSimulateController::class)->name('api.webhooks.evolution-simulate');
 

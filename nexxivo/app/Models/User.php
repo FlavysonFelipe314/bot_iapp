@@ -47,4 +47,9 @@ class User extends Authenticatable
             'is_admin' => 'boolean',
         ];
     }
+
+    public function botInstances(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(BotInstance::class);
+    }
 }

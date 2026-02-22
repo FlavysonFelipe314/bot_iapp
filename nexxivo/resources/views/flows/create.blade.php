@@ -21,6 +21,17 @@
             </div>
 
             <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Instância WhatsApp</label>
+                <select name="instance_name" id="flow-instance" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <option value="">Todas as instâncias</option>
+                    @foreach($instances ?? [] as $inst)
+                    <option value="{{ $inst->instance_name }}">{{ $inst->instance_name }}</option>
+                    @endforeach
+                </select>
+                <p class="mt-1 text-sm text-gray-500">Deixe em branco para o fluxo valer em qualquer instância</p>
+            </div>
+
+            <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Prioridade</label>
                 <input type="number" name="priority" id="flow-priority" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                 <p class="mt-1 text-sm text-gray-500">Fluxos com maior prioridade são executados primeiro</p>
@@ -324,9 +335,11 @@ document.getElementById('flow-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const form = e.target;
+    const instanceSelect = document.getElementById('flow-instance');
     const data = {
         name: document.getElementById('flow-name').value.trim(),
         description: document.getElementById('flow-description').value.trim() || null,
+        instance_name: instanceSelect ? instanceSelect.value || null : null,
         priority: parseInt(document.getElementById('flow-priority').value) || 0,
         is_active: document.getElementById('is_active').checked,
         triggers: [],

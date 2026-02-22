@@ -10,7 +10,9 @@ class FlowManagementController extends Controller
 {
     public function index()
     {
-        $flows = Flow::orderBy('priority', 'desc')
+        $instanceNames = \App\Models\BotInstance::where('user_id', auth()->id())->pluck('instance_name');
+        $flows = Flow::whereNull('instance_name')->orWhereIn('instance_name', $instanceNames)
+            ->orderBy('priority', 'desc')
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -20,14 +22,17 @@ class FlowManagementController extends Controller
     public function create()
     {
         $defaultProvider = AISetting::get('default_provider', 'ollama');
-        return view('flows.create', compact('defaultProvider'));
+        $instances = \App\Models\BotInstance::where('user_id', auth()->id())->orderBy('instance_name')->get();
+        return view('flows.create', compact('defaultProvider', 'instances'));
     }
 
     public function edit($id)
     {
-        $flow = Flow::findOrFail($id);
+        $instanceNames = \App\Models\BotInstance::where('user_id', auth()->id())->pluck('instance_name');
+        $flow = Flow::whereNull('instance_name')->orWhereIn('instance_name', $instanceNames)->findOrFail($id);
         $defaultProvider = AISetting::get('default_provider', 'ollama');
-        return view('flows.edit', compact('flow', 'defaultProvider'));
+        $instances = \App\Models\BotInstance::where('user_id', auth()->id())->orderBy('instance_name')->get();
+        return view('flows.edit', compact('flow', 'defaultProvider', 'instances'));
     }
 }
 

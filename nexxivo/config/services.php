@@ -47,4 +47,17 @@ return [
         'gemini_model' => env('GEMINI_MODEL', 'gemini-pro'),
     ],
 
+    'elevenlabs' => [
+        'api_key' => env('ELEVENLABS_API_KEY', ''),
+        'voice_id' => env('ELEVENLABS_VOICE_ID', '21m00Tcm4TlvDq8ikWAM'),
+        'model_id' => env('ELEVENLABS_MODEL_ID', 'eleven_multilingual_v2'),
+    ],
+
+    'evolution' => [
+        'url' => rtrim(env('EVOLUTION_API_URL', 'http://localhost:8080'), '/'),
+        'apikey' => env('EVOLUTION_API_KEY', ''),
+        'timeout' => (int) env('EVOLUTION_API_TIMEOUT', 30),
+        'webhook_url' => env('EVOLUTION_WEBHOOK_URL'), // URL que a Evolution (Docker) usa para chamar o Laravel. Se vazio, usa APP_URL.
+    ],
+
 ];

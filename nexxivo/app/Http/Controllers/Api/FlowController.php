@@ -38,6 +38,7 @@ class FlowController extends Controller
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string',
+                'instance_name' => 'nullable|string|max:255',
                 'triggers' => 'required|array|min:1',
                 'triggers.*.type' => 'required|string|in:exact,contains,starts_with,catch_all',
                 'triggers.*.value' => 'nullable|string', // Pode ser vazio para catch_all
@@ -148,9 +149,10 @@ class FlowController extends Controller
             $validated = $request->validate([
                 'name' => 'sometimes|required|string|max:255',
                 'description' => 'nullable|string',
+                'instance_name' => 'nullable|string|max:255',
                 'triggers' => 'sometimes|required|array|min:1',
-                'triggers.*.type' => 'required|string|in:exact,contains,starts_with',
-                'triggers.*.value' => 'required|string',
+                'triggers.*.type' => 'required|string|in:exact,contains,starts_with,catch_all',
+                'triggers.*.value' => 'nullable|string',
                 'actions' => 'sometimes|required|array|min:1',
                 'actions.*.type' => 'required|string|in:send_message,wait,ai_response,conditional',
                 'actions.*.content' => 'nullable|string',
@@ -192,6 +194,15 @@ class FlowController extends Controller
                             'message' => 'A ação "Aguardar" requer uma duração válida (em milissegundos).',
                             'errors' => [
                                 "actions.{$index}.duration" => ['A duração é obrigatória e deve ser maior ou igual a 0 quando o tipo é "wait".']
+                            ]
+                        ], 422);
+                    }
+                    if ($action['type'] === 'ai_response' && empty(trim($action['prompt'] ?? ''))) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'A ação "Resposta com IA" requer um prompt.',
+                            'errors' => [
+                                "actions.{$index}.prompt" => ['O prompt é obrigatório quando o tipo é "ai_response".']
                             ]
                         ], 422);
                     }
